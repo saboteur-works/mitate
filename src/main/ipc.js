@@ -33,6 +33,8 @@
  * the message without Electron's "Error invoking remote method" prefix.
  */
 
+const { RESCAN_IN_PROGRESS } = require('./collections/rescan.js');
+
 const CHANNELS = {
   pickFolders: 'folders:pick',
   createCollection: 'collections:create',
@@ -61,7 +63,7 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, getWindow
       return { ok: true, ...(await fn()) };
     } catch (err) {
       const failure = { ok: false, error: err && err.message ? err.message : String(err) };
-      if (err && err.code === 'RESCAN_IN_PROGRESS') failure.busy = true;
+      if (err && err.code === RESCAN_IN_PROGRESS) failure.busy = true;
       return failure;
     }
   }

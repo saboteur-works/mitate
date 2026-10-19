@@ -355,23 +355,16 @@ describe.skipIf(runningAsRoot)('real unreadable collection folder (mode 000)', (
     expect(fs.readdirSync(copy.root).sort()).toEqual(parentBefore);
   };
 
-  it('create marks the locked folder unavailable, records no files for it, and writes nothing there', async () => {
+  it('create rejects the locked folder, naming it, stores nothing, and writes nothing there (FR-1, OQ-10)', async () => {
     lockFolder(locked);
     const stateBefore = lockedState();
     const parentBefore = fs.readdirSync(copy.root).sort();
     const before = snapOthers('before');
 
-    const created = await service(runScan).createCollection('c', [locked, open1]);
-    const lockedFolder = created.folders.find((f) => f.path === locked);
-    const openFolder = created.folders.find((f) => f.path === open1);
-    expect(lockedFolder.unavailable).toBe(true);
-    expect(openFolder.unavailable).toBe(false);
-    expect(created.files.filter((f) => f.folderId === lockedFolder.id)).toEqual([]);
-    expect(created.files.filter((f) => f.folderId === openFolder.id).length).toBeGreaterThan(0);
-
-    const stored = openStorage({ location: { file: storageFile } });
-    expect(stored.getFolder(lockedFolder.id).unavailable).toBe(true);
-    expect(stored.getIndex({ folderId: lockedFolder.id })).toEqual([]);
+    await expect(service(runScan).createCollection('c', [locked, open1])).rejects.toThrow(
+      new RegExp(`cannot be read: ${locked.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\(EACCES\\)`),
+    );
+    expect(openStorage({ location: { file: storageFile } }).listCollections()).toEqual([]);
     assertOthersUnchanged(before);
     assertLockedUntouched(stateBefore, parentBefore);
   });
@@ -406,18 +399,20 @@ describe.skipIf(runningAsRoot)('real unreadable collection folder (mode 000)', (
   });
 });
 
-// macOS can refuse a whole volume or folder with EPERM ("Operation not
-// permitted") even when its Unix permissions allow access; measured
-// 2026-10-19 on an external drive (docs/measurements/atime-cat-read.md). A
-// temp folder can't be put in that state, so the refusal is simulated by
-// making stat/access and the scan fail with EPERM for one folder.
-describe('folder refused by macOS with EPERM', () => {
+// A folder whose details (stat) can be read but which cannot be opened for
+// listing, failing with EPERM. Measured 2026-10-19 on an external drive:
+// listing it (`ls`) and creating a folder in it failed with "Operation not
+// permitted"; whether stat succeeds there was not measured, and why access was
+// refused is not established (docs/measurements/atime-cat-read.md). A temp
+// folder can't be put in that state, so opendir and the scan are made to fail
+// with EPERM for one folder while stat and access still succeed.
+describe('folder that cannot be opened for listing (EPERM, simulated)', () => {
   const { createRescanService } = require('../../src/main/collections/rescan.js');
   let copy;
   let refused;
   let open;
   let refusing = false;
-  const eperm = (p) => Object.assign(new Error(`EPERM: operation not permitted, '${p}'`), { code: 'EPERM' });
+  const eperm = (p) => Object.assign(new Error(`EPERM: operation not permitted, opendir '${p}'`), { code: 'EPERM' });
   const isRefused = (p) =>
     refusing && typeof p === 'string' && (p === refused || p.startsWith(refused + path.sep));
 
@@ -426,12 +421,9 @@ describe('folder refused by macOS with EPERM', () => {
     refused = path.join(copy.root, 'Photos');
     open = path.join(copy.root, 'Docs');
     refusing = false;
-    const realStat = fs.promises.stat;
-    const realAccess = fs.promises.access;
-    vi.spyOn(fs.promises, 'stat').mockImplementation((p, ...rest) =>
-      isRefused(p) ? Promise.reject(eperm(p)) : realStat.call(fs.promises, p, ...rest));
-    vi.spyOn(fs.promises, 'access').mockImplementation((p, ...rest) =>
-      isRefused(p) ? Promise.reject(eperm(p)) : realAccess.call(fs.promises, p, ...rest));
+    const realOpendir = fs.promises.opendir;
+    vi.spyOn(fs.promises, 'opendir').mockImplementation((p, ...rest) =>
+      isRefused(p) ? Promise.reject(eperm(p)) : realOpendir.call(fs.promises, p, ...rest));
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -440,15 +432,17 @@ describe('folder refused by macOS with EPERM', () => {
 
   const scan = (dir) => (isRefused(dir) ? Promise.reject(eperm(dir)) : runScan(dir));
 
-  it('create rejects a folder that is refused when the collection is created, naming EPERM', async () => {
+  it('create rejects the folder with an error naming it and EPERM, and stores nothing', async () => {
     refusing = true;
-    await expect(service(scan).createCollection('c', [refused, open])).rejects.toThrow(/cannot be read.*EPERM/);
+    await expect(service(scan).createCollection('c', [refused, open])).rejects.toThrow(
+      /cannot be read: .*Photos \(EPERM\)/,
+    );
+    expect(openStorage({ location: { file: storageFile } }).listCollections()).toEqual([]);
   });
 
-  it('a folder refused after creation is marked unavailable on load and keeps its stored files', async () => {
+  it('a folder that fails this way after creation is unavailable on load and keeps its stored files', async () => {
     const storageForTest = openStorage({ location: { file: storageFile } });
-    const svc = createCollectionService({ storage: storageForTest, scan });
-    const created = await svc.createCollection('c', [refused, open]);
+    const created = await createCollectionService({ storage: storageForTest, scan }).createCollection('c', [refused, open]);
     const refusedId = created.folders.find((f) => f.path === refused).id;
     const storedCount = created.files.filter((f) => f.folderId === refusedId).length;
     expect(storedCount).toBeGreaterThan(0);
@@ -456,14 +450,13 @@ describe('folder refused by macOS with EPERM', () => {
     refusing = true;
     const reopened = createCollectionService({ storage: openStorage({ location: { file: storageFile } }), scan });
     const view = (await reopened.loadCollections()).find((v) => v.collection.id === created.collection.id);
-    const folder = view.folders.find((f) => f.id === refusedId);
-    expect(folder.unavailable).toBe(true);
+    expect(view.folders.find((f) => f.id === refusedId).unavailable).toBe(true);
     const files = view.files.filter((f) => f.folderId === refusedId);
     expect(files.length).toBe(storedCount);
     expect(files.every((f) => f.unavailable === true)).toBe(true);
   });
 
-  it('rescan skips a folder refused after creation and still rescans the other', async () => {
+  it('rescan skips a folder that fails this way after creation and still rescans the other', async () => {
     const storageForTest = openStorage({ location: { file: storageFile } });
     const created = await createCollectionService({ storage: storageForTest, scan }).createCollection('c', [refused, open]);
     const refusedId = created.folders.find((f) => f.path === refused).id;
@@ -474,5 +467,44 @@ describe('folder refused by macOS with EPERM', () => {
     expect(result.folders.find((f) => f.id === refusedId).unavailable).toBe(true);
     expect(result.summary.skipped).toContain(refusedId);
     expect(result.summary.rescanned).toContain(openId);
+  });
+});
+
+describe('launch availability check writes the store once', () => {
+  const { createCountingFs } = require('../support/counting-fs.js');
+
+  it('marks two folders that disappeared unavailable in a single write (FR-18)', async () => {
+    const dirs = ['gone-a', 'gone-b', 'stays'].map((n) => {
+      const d = path.join(work, n);
+      fs.mkdirSync(d);
+      return d;
+    });
+    await service().createCollection('c', dirs);
+    fs.rmdirSync(dirs[0]);
+    fs.rmdirSync(dirs[1]);
+
+    const counter = createCountingFs();
+    const storage = openStorage({ location: { file: storageFile }, fs: counter.impl });
+    const [loaded] = await createCollectionService({ storage, scan: throwingScan }).loadCollections();
+    expect(loaded.folders.filter((f) => f.unavailable)).toHaveLength(2);
+    expect(counter.renames).toBe(1);
+  });
+});
+
+describe('rescan of a collection removed while it is scanning', () => {
+  const { createRescanService } = require('../../src/main/collections/rescan.js');
+
+  it('rejects instead of returning an empty view as a success', async () => {
+    const d = path.join(work, 'removed-mid-rescan');
+    fs.mkdirSync(d);
+    const storage = openStorage({ location: { file: storageFile } });
+    const created = await createCollectionService({ storage, scan: stubScan }).createCollection('c', [d]);
+    const scan = async (dir) => {
+      storage.removeCollection(created.collection.id);
+      return stubScan(dir);
+    };
+    await expect(createRescanService({ storage, scan }).rescanCollection(created.collection.id)).rejects.toThrow(
+      /no longer exists/,
+    );
   });
 });

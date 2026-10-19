@@ -96,7 +96,9 @@ function createRescanService({ storage, scan = defaultScan } = {}) {
           (applyResult(result) ? summary.rescanned : summary.skipped).push(result.folder.id);
         }
       });
-      return { ...views.getCollectionView(collectionId), summary };
+      const view = views.getCollectionView(collectionId);
+      if (!view) throw new Error(`collection ${collectionId} no longer exists`);
+      return { ...view, summary };
     } finally {
       inFlight.delete(collectionId);
     }

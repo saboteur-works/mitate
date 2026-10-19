@@ -28,14 +28,17 @@
  *   collection, its folders, their indexes and unavailable flags inside one
  *   storage.transaction, i.e. one write of the store regardless of folder count.
  * - FR-13: a directory that contains the storage file is rejected (compared
- *   by realpath). The service only reads collection folders (stat, access,
+ *   by realpath). The service only reads collection folders (stat, opendir,
  *   scan); it never writes there.
- * - FR-4 at creation: a directory that passes validation but fails to scan
- *   (e.g. no read permission) is stored as a folder record with
- *   unavailable: true and an empty index; creation does not fail.
+ * - FR-1 / OQ-10 at creation: each folder must pass the readability check
+ *   (a directory that can be opened for listing; see isReadableDirectory), or
+ *   creation is rejected with an error naming the folder and the error code
+ *   and nothing is stored. A folder that passes it but whose scan then fails
+ *   (e.g. the drive disconnects mid-scan) is stored with unavailable: true
+ *   and an empty index (FR-4).
  * - loadCollections never scans and never shows a picker (FR-3). Each folder
- *   is checked as a directory with fs.access(R_OK); the result is persisted
- *   with setFolderUnavailable only when it differs from the stored flag.
+ *   gets the readability check; flags that differ from the stored ones are
+ *   persisted in one storage.transaction (one write, FR-18).
  *   Folder records and indexed files are never removed.
  * - The file-level `unavailable` flag is DERIVED, not persisted: returned
  *   file records carry unavailable: true when their folder is unavailable, and
@@ -62,6 +65,19 @@ async function assertDirectory(dir) {
     throw new Error(`Folder does not exist or cannot be read: ${dir} (${err.code || err.message})`);
   }
   if (!stat.isDirectory()) throw new Error(`Not a directory: ${dir}`);
+  try {
+    await openForListing(dir);
+  } catch (err) {
+    throw new Error(`Folder does not exist or cannot be read: ${dir} (${err.code || err.message})`);
+  }
+}
+
+// Opens the directory for listing and closes it without reading any entry.
+// This is the operation that failed with EPERM on a measured external drive
+// (docs/measurements/atime-cat-read.md) and with EACCES on a mode-000 folder.
+async function openForListing(dir) {
+  const handle = await fs.promises.opendir(dir);
+  await handle.close();
 }
 
 async function realOrSelf(p) {
@@ -77,7 +93,7 @@ async function resolvedStorageFile(storage) {
   // The store file may not exist yet; resolve its directory (or nearest existing ancestor).
   let dir = path.dirname(file);
   const tail = [path.basename(file)];
-  while (dir !== path.dirname(dir) && (await realOrSelf(dir)) === dir && !fs.existsSync(dir)) {
+  while (dir !== path.dirname(dir) && !fs.existsSync(dir)) {
     tail.unshift(path.basename(dir));
     dir = path.dirname(dir);
   }
@@ -95,7 +111,7 @@ async function isReadableDirectory(dir) {
   try {
     const stat = await fs.promises.stat(dir);
     if (!stat.isDirectory()) return false;
-    await fs.promises.access(dir, fs.constants.R_OK);
+    await openForListing(dir);
     return true;
   } catch {
     return false;
@@ -167,10 +183,15 @@ function createCollectionService({ storage, scan = defaultScan, idGenerator = cr
   }
 
   async function refreshAccessibility(collectionId) {
+    const changes = [];
     for (const folder of storage.listFolders(collectionId)) {
       const ok = await isReadableDirectory(folder.path);
-      if (folder.unavailable === ok) storage.setFolderUnavailable(folder.id, !ok);
+      if (folder.unavailable === ok) changes.push({ id: folder.id, unavailable: !ok });
     }
+    if (changes.length === 0) return;
+    storage.transaction(() => {
+      for (const c of changes) storage.setFolderUnavailable(c.id, c.unavailable);
+    });
   }
 
   async function loadCollections() {
