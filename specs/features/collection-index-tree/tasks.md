@@ -13,7 +13,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** none
 **Estimate:** 3
 **Notes:** Covers FR-19. This task verifies the unverified compatibility of Playwright's Electron support with Electron 44 (OQ-9); if it fails, record the failure output and report it rather than switching framework silently. Risk: the Electron binary download from npm may fail in the sandbox (previously the zip had to be fetched from GitHub releases); this task records the outcome and does not solve it in the spec.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 2: Fixture tree builder
 **What:** Provide a script that builds the FR-17 fixture tree in a temp directory (four-plus nested levels, supported and unsupported files, hidden file and folder, package bundle, symlink to a folder, symlink to a file, files with extended attributes).
@@ -22,7 +22,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 1
 **Estimate:** 2
 **Notes:** Covers the fixture part of FR-17; reused by Tasks 6, 8 and 16. Uses `xattr` via child process on macOS.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 3: Supported-type registry
 **What:** Implement the registry module with one data table, lookup from extension to entry and listing by kind, containing exactly the FR-10 table.
@@ -31,7 +31,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 1
 **Estimate:** 2
 **Notes:** Covers FR-9, FR-10. Lookup is on lowercase extension; case-insensitive matching of file names is applied by the caller (Task 8) or by a helper here.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 4: Storage module
 **What:** Implement the single storage module (JSON file store) for collection records, folder records with absolute paths, the file index and folder-access data, with a storage location configurable in one place.
@@ -40,7 +40,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 1
 **Estimate:** 3
 **Notes:** Covers FR-2 (persistence at the storage level), FR-3 (folder-access data goes through this module), FR-18, FR-13 (storage outside collection folders). Known risk: a JSON store is not expected to scale to hundreds of thousands of files (unmeasured); the module boundary contains a later swap.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 5: Read-only check (snapshot and compare)
 **What:** Implement a reusable library that snapshots a directory tree (relative path, type, size, mode, content hash, mtime, ctime, birthtime, atime, xattr names and value hashes) and compares two snapshots, with access time reported separately.
@@ -49,7 +49,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 1
 **Estimate:** 5
 **Notes:** Covers FR-14, FR-15. Ordering rule: the before-snapshot records atime after its content hashing; the after-snapshot records atime before its content hashing. The atime-fails flag defaults to never-fail while always reporting. Placed under tools/ so any feature's tests can import it.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 6: Read-only check tests
 **What:** Write the tests showing the check detects each required change and reports no differences for two untouched snapshots.
@@ -58,7 +58,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 2, 5
 **Estimate:** 3
 **Notes:** Covers FR-16 and the FR-15 flag behaviour.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 7: Access-time measurement (FR-21)
 **What:** Add a measurement script that reads a fixture file with plain `cat`, compares access time before and after on each volume type, and writes the recorded result to a file.
@@ -67,7 +67,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 1
 **Estimate:** 2
 **Notes:** Covers FR-21. This is a measurement task, not product code. The result file records only what was measured; it must not state a cause for any observed atime behaviour. Until the file has results, FR-15's default stays never-fail. External and network volumes need the user's hardware, so those records may need to be run outside the sandbox by the user.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 8: Discovery
 **What:** Implement the discovery function that walks a folder at any depth and returns index records for supported files, skipping dot-names, package bundles and symlinks.
@@ -76,7 +76,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 2, 3
 **Estimate:** 5
 **Notes:** Covers FR-5, FR-6, FR-7, FR-8. Discovery must only read; it creates nothing in the scanned folders.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 9: Run discovery off the rendering path
 **What:** Run discovery in a worker (worker thread or utility process) so the window stays interactive during a scan, with results delivered when the scan completes.
@@ -85,7 +85,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 8
 **Estimate:** 3
 **Notes:** Covers FR-12. Incremental publishing and progress are Feature 5; only completion-time results are required here.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 10: Tree model
 **What:** Implement the pure function that turns index records into the folder tree: root folders always present (even when empty or unavailable), every folder below the roots only if it contains at least one supported file at any depth, subfolders before files, case-insensitive natural numeric sort.
@@ -94,7 +94,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 4
 **Estimate:** 2
 **Notes:** Covers FR-11 (structure and order). Input record shape is defined by the storage module (Task 4).
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 11: Collection service
 **What:** Implement main-process logic to create a named collection from one or more directories, scan them, persist everything through storage, and on launch load stored collections and mark inaccessible folders unavailable without dropping records or files.
@@ -103,7 +103,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 4, 9
 **Estimate:** 3
 **Notes:** Covers FR-1 (logic; directories only), FR-2, FR-3, FR-4, FR-13. No code path in this module writes inside a collection folder.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 12: Rescan service and launch behaviour
 **What:** Add the per-collection rescan operation that re-runs discovery over available folders and updates the index, and ensure launch shows the stored index without scanning.
@@ -112,7 +112,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 11
 **Estimate:** 2
 **Notes:** Covers FR-20 (logic).
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 13: Create-collection UI with folder picker
 **What:** Add the renderer UI and IPC to name a collection and choose directories only through the folder picker, with no way to add an individual file.
@@ -121,7 +121,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 1, 11
 **Estimate:** 2
 **Notes:** Covers FR-1 (interface).
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 14: Virtualized folder tree view
 **What:** Render a collection as the tree from Task 10 with virtualization so only visible or expanded nodes are in the DOM, always show root folders (including empty or unavailable ones), and mark files of unavailable folders "unavailable" instead of hiding them.
@@ -130,7 +130,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 10, 13
 **Estimate:** 5
 **Notes:** Covers FR-11 (render), FR-4 (display).
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 15: Rescan action in the UI
 **What:** Add a user-triggered rescan button per collection and wire it to the rescan service.
@@ -139,7 +139,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 12, 14
 **Estimate:** 2
 **Notes:** Covers FR-20 (interface).
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 16: End-to-end full flow under the read-only check
 **What:** Run the full flow (create collection, scan, browse tree, quit, relaunch) on the fixture tree with the read-only check snapshotting before and after, and assert no differences.
@@ -148,7 +148,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 5, 6, 14, 15
 **Estimate:** 5
 **Notes:** Covers FR-17, FR-13, FR-3 (end-to-end relaunch without re-selection). Uses the Task 2 fixture tree including xattr files, symlinks and the package bundle.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 17: Remove duplicated scan and readability helpers
 **What:** Export `isReadableDirectory` and the default scan once and import them in rescan.js and service.js, and remove the unused async `discover` walk from discover.js, keeping `discoverSync`.
@@ -157,7 +157,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 8, 12
 **Estimate:** 2
 **Notes:** Review finding 26 (rescan.js:30, service.js:85, discover.js). Covers FR-4, FR-5. Refactor with no behaviour change; the export test is the only one that fails before the change. Runs first of the fix tasks because 18, 19 and 25 edit the same files.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 18: Fix storage-location guard for children named `..*`
 **What:** Change `contains()` so only a relative path equal to `..` or starting with `..` plus the path separator (or an absolute relative result) counts as outside; a child named `..appdata` is inside.
@@ -166,7 +166,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 17
 **Estimate:** 1
 **Notes:** Review finding 17 (service.js:82). Covers FR-13. Depends on 17 only to avoid concurrent edits of service.js.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 19: Re-read folder state after a successful rescan before clearing unavailable
 **What:** In rescan, decide whether to clear a folder's unavailable flag from the folder state re-read from storage after the scan succeeds, not from the snapshot taken before the await.
@@ -175,7 +175,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 17
 **Estimate:** 2
 **Notes:** Review finding 22 (rescan.js:67). Covers FR-4, FR-20. Depends on 17 because both edit rescan.js.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 20: Keep Rescan disabled while a rescan runs, and reject concurrent rescans in main
 **What:** Track per-collection in-flight rescan state in the renderer so `collection-selected` does not re-enable Rescan during a rescan, and make the main-process rescan reject (or ignore, with a defined result) a second rescan of the same collection while one is running.
@@ -184,7 +184,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 19, 15
 **Estimate:** 2
 **Notes:** Review finding 20 (rescan-button.js:17). Covers FR-20. Depends on 19 because both edit rescan.js.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 21: Report a corrupt or newer-format store at startup without touching it
 **What:** Wrap storage opening at app startup so a corrupt or newer-`FORMAT_VERSION` store.json is caught, an error is shown to the user (a message window or dialog naming the file), the app does not crash silently, and store.json is neither overwritten nor deleted.
@@ -193,7 +193,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 11
 **Estimate:** 3
 **Notes:** Review finding 18 (main.js:25). Covers FR-2, FR-18. The startup logic is extracted to src/main/startup.js with the dialog injected so it is unit-testable; the real dialog call in main.js is not covered by a test here.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 22: Disable Create while a collection is being created
 **What:** Disable the Create control for the duration of the `createCollection` call and re-enable it on completion or failure, so repeated clicks cannot create duplicates.
@@ -202,7 +202,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 13
 **Estimate:** 1
 **Notes:** Review finding 19 (create-collection.js:71). Covers FR-1. E2E is used because the behaviour is renderer-only.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 23: Discard stale collection-view responses
 **What:** Give each `selectCollection` call a request token and apply a `getCollectionView` response only if it is still the latest request, so the displayed tree always matches the highlighted collection.
@@ -211,7 +211,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 22, 14
 **Estimate:** 2
 **Notes:** Review finding 21 (create-collection.js:48). Covers FR-11. Depends on 22 because both edit create-collection.js. E2E is used because the behaviour is renderer-only.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 24: Give tree nodes an identity unique per root
 **What:** Make every tree node's identity unique per root (for example root id plus relative path) and use it for expansion state, the `data-path` attribute and row keys, so root `/a/b` and subfolder `/a/b` under root `/a` do not collide; overlapping roots are not rejected.
@@ -220,7 +220,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 14, 23
 **Estimate:** 3
 **Notes:** Review finding 23 (service.js:114 accepts `/a` and `/a/b`). Product decision (Feature 3, product FR-5, OQ-6 resolved): overlapping folders are allowed and both are kept; files under the overlap are indexed twice until Feature 3 is accepted. So this task does not reject overlaps and adds no validation. Covers FR-11. Depends on 23 only to sequence renderer edits.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 25: Summary-only collection list and per-folder index lookups
 **What:** Make `collections:list` return summaries only (name, id, folder count, per-folder unavailable flag) with no file records and no deep copy of the index, and make the collection view read the index per folder through `getIndex({folderId})` instead of walking the whole index per collection.
@@ -229,7 +229,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 18, 20, 23, 17
 **Estimate:** 3
 **Notes:** Review finding 24 (service.js:102). Covers FR-2, FR-12. Makes no performance claim; the verifiable outcome is the payload content. Depends on 17 and 18 (service.js), 20 (ipc.js) and 23 (create-collection.js) to avoid concurrent edits.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 26: Batch storage mutations into one atomic write per operation
 **What:** Add a transaction/commit API to the storage module so the mutations of one operation are applied in memory and persisted in a single write, keeping the atomic write-then-rename; use it in `createCollection` and rescan.
@@ -238,13 +238,85 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 25, 19, 21
 **Estimate:** 3
 **Notes:** Review finding 25 (storage/index.js:130). Covers FR-18. The only claim is the write count; no performance claim is made. Depends on 25 (storage and service.js) and 19 (rescan.js) to avoid concurrent edits; 21 is listed so startup error handling lands before storage behaviour changes.
+**Done:** [x]
+
+### Task 27: Correct the fixture's `supported` flag for notes.txt
+**What:** Change `Photos/2024/Trip/Day1/notes.txt` in the fixture tree builder from unsupported to supported (txt is a registered document type), and remove the test code that works around the wrong flag.
+**Files:** tests/support/fixture-tree.js, tests/unit/fixture-tree.test.js, tests/unit/discovery.test.js, tests/e2e/tree-view.spec.js
+**Done when:** `npx vitest run` exits 0 for the whole unit suite and `npm run test:e2e -- tests/e2e/tree-view.spec.js` exits 0, with a test in fixture-tree.test.js asserting the fixture's own list of supported files includes `Photos/2024/Trip/Day1/notes.txt` (fails on the pre-fix code), `discovery.test.js` comparing discovery output to the fixture's supported list with no `expected.push('Photos/2024/Trip/Day1/notes.txt')` workaround, and `grep -rn "notes.txt" tests/unit/discovery.test.js` showing no special-casing comment or push.
+**Depends on:** 26
+**Estimate:** 1
+**Notes:** Covers FR-10 (txt is registered) and the fixture part of FR-17. Any other test that adds notes.txt by hand (for example the comment at tests/e2e/tree-view.spec.js:151) is updated to read the flag from the fixture instead.
+**Done:** [ ]
+
+### Task 28: Startup tests for an older-format store and an unreadable store
+**What:** Add startup tests for store.json with an older `FORMAT_VERSION` and for a store.json that cannot be read because of permissions (mode 000), asserting the same behaviour as the corrupt and newer-format cases from Task 21: the error reporter is called with a message naming the file, startup resolves without throwing, and the file is unchanged.
+**Files:** tests/unit/startup.test.js, and src/main/startup.js or src/main/storage/index.js only if the tests show the behaviour is missing
+**Done when:** `npx vitest run tests/unit/startup.test.js` exits 0, with tests that (a) a store.json whose `FORMAT_VERSION` is below the supported one and (b) a store.json with mode 000 (restored to 0600 in teardown, and skipped with a stated reason when the process runs as root) each make startup call the injected error reporter with a message naming the file, resolve without throwing, and leave the store.json bytes and mode identical to before; if either test fails on the current code, the minimal fix is made in the same task and the failing output is recorded in the commit message.
+**Depends on:** 21
+**Estimate:** 2
+**Notes:** Covers FR-2, FR-18. These are tests of cases Task 21 did not cover; whether they pass on the current code is unknown until they run, so this task does not assume a fix is needed. If an older format is meant to be migrated rather than reported, that is a product decision: record it as an Open Question rather than choosing here. Expected behaviour per the request is the same error report with the file unchanged.
+**Done:** [ ]
+
+### Task 29: Tests with a real unreadable collection folder
+**What:** Add tests that use a real fixture folder with mode 000 for create, load (startup) and rescan, asserting the folder is marked unavailable and nothing on disk changes, in place of stubbed unreadability.
+**Files:** tests/unit/collection-service.test.js, tests/unit/rescan.test.js, tests/support/fixture-tree.js (only if a helper for locking and restoring a folder is added)
+**Done when:** `npx vitest run tests/unit/collection-service.test.js tests/unit/rescan.test.js` exits 0, with tests that, for a collection folder chmod 000 on a copy of the fixture: (a) create marks the folder unavailable and records no files for it, (b) load on a re-instantiated service marks it unavailable and keeps its previously indexed files flagged unavailable, (c) rescan skips it, keeps its stored files and leaves it unavailable; each test takes a read-only-check snapshot of the other fixture folders before and after and asserts no non-atime differences, and restores permissions in `afterEach` so the temp directory can be removed; the tests are skipped with a stated reason when running as root.
+**Depends on:** 27
+**Estimate:** 3
+**Notes:** Covers FR-4, FR-17, FR-20. The snapshot cannot descend into the locked folder, so the locked folder's own mode and parent entry are asserted unchanged by `fs.statSync` on the folder itself. Tests that stub readability remain; these add the real-permission case. Depends on 27 because both edit the fixture and its consumers.
+**Done:** [ ]
+
+### Task 30: Remove unused variables flagged by the TypeScript checker
+**What:** Remove the three unused variables: `id` at tests/unit/rescan.test.js:143, `require` at tests/unit/storage.test.js:7 and `e` at tests/unit/discovery.test.js:116.
+**Files:** tests/unit/rescan.test.js, tests/unit/storage.test.js, tests/unit/discovery.test.js
+**Done when:** `npx vitest run` exits 0 for the whole unit suite, and the TypeScript checker run that reported them no longer reports those three diagnostics (the command used is recorded in the commit message); removing `require` keeps storage.test.js working, so it is replaced by whatever the test actually uses.
+**Depends on:** 27, 29
+**Estimate:** 1
+**Notes:** No behaviour change; there is no failing-before test. Line numbers are as reported and may have moved after Tasks 27 and 29, so the variables are located by name. Depends on 27 and 29 because they edit the same test files.
+**Done:** [ ]
+
+### Task 31: Replace `ipcMain._invokeHandlers` in e2e tests with a supported mechanism
+**What:** Stop the e2e tests reading the Electron-internal `ipcMain._invokeHandlers`. Expose the original handler through a supported, non-test-only seam in ipc.js (for example `registerIpc` returning, or the module exporting a lookup for, the handler it registered for each channel), and have the tests wrap it with `ipcMain.removeHandler(channel)` followed by `ipcMain.handle(channel, wrapper)` where the wrapper calls the captured original.
+**Files:** src/main/ipc.js, tests/support/ipc-wrap.js, tests/e2e/create-collection.spec.js, tests/e2e/tree-view.spec.js, tests/unit/ipc.test.js
+**Done when:** `grep -rn "_invokeHandlers" src tests` returns no matches, `npx vitest run tests/unit/ipc.test.js` exits 0 with a new test that the seam returns the registered handler for each channel in `CHANNELS` and that calling it gives the same result as invoking the channel (fails before the seam exists), and `npm run test:e2e -- tests/e2e/create-collection.spec.js tests/e2e/tree-view.spec.js` exits 0 with their existing delayed-response and stubbed-response tests unchanged in what they assert.
+**Depends on:** 27
+**Estimate:** 3
+**Notes:** Covers FR-1, FR-11 (test mechanism only). The seam must have a product reason independent of the tests (a handler lookup by channel), carry no test-only branch, and be documented in the ipc.js header. If Playwright's `electronApp.evaluate` cannot reach the seam through `require` of the module, record the failure output and report it rather than falling back to an internal API. Depends on 27 because both edit tree-view.spec.js.
+**Done:** [ ]
+
+### Task 32: Move the rescan-delay test hook out of main.js
+**What:** Remove the `MEDIA_ORGANIZER_RESCAN_DELAY_MS` code from src/main/main.js and make the rescan e2e slow a rescan by wrapping the `collections:rescan` handler in the main process with the Task 31 mechanism (remove and re-register with a wrapper that waits before calling the original).
+**Files:** src/main/main.js, tests/e2e/rescan.spec.js, tests/support/ipc-wrap.js
+**Done when:** `grep -rn "RESCAN_DELAY" src tests` returns no matches, `grep -n "process.env" src/main/main.js` shows no test-only variable, and `npm run test:e2e -- tests/e2e/rescan.spec.js` exits 0 with the Task 20 test (selecting another collection and back leaves Rescan disabled until the slowed rescan finishes) still present and passing against the wrapper; a temporary mutation that re-enables the button on `collection-selected` makes that test fail, recorded in the commit message.
+**Depends on:** 20, 31
+**Estimate:** 2
+**Notes:** Covers FR-20 (test mechanism only). No test-only code remains in product files. The wrapper delays only the e2e's launched app instance and is installed from the test through `electronApp.evaluate`.
+**Done:** [ ]
+
+### Task 33: Measurement: JSON store cost at 50k, 200k and 500k file records
+**What:** Add a measurement script that, for index sizes of 50,000, 200,000 and 500,000 file records, measures the storage module's load time, save time and one transaction (Task 26) commit time, and the size of store.json, with several runs per size, and records the results.
+**Files:** tools/store-scale/measure.js, docs/measurements/json-store-scale.md
+**Done when:** `node tools/store-scale/measure.js` exits 0 and writes `docs/measurements/json-store-scale.md` containing: machine (model, CPU, RAM, OS version), Node version and Electron version, the method (record shape, how the store was populated, whether the OS file cache was warm, number of runs), and for each of the three sizes the store.json size in bytes and the individual run values plus min, median and max in milliseconds for load, save and transaction commit; with at least 5 runs per size per operation.
+**Depends on:** 26
+**Estimate:** 3
+**Notes:** Covers FR-18 (measurement; resolves the unmeasured risk named in Task 4). This is a measurement task, not product code. The document records only what was measured. It states no cause for any timing, and no conclusion such as "adequate" or "too slow". Each run uses a temporary storage location outside any collection folder, removed afterwards. Peak memory is recorded only if the script measures it.
+**Done:** [ ]
+
+### Task 34: Measurement: scan wall time and peak RSS
+**What:** Add a measurement script that runs discovery in the worker (Task 9) over (a) a generated tree of 200,000 files on the internal APFS volume and (b) a real directory tree that holds no user data and is read-only (for example `/System/Library`), and records wall time and peak resident set size for several runs of each.
+**Files:** tools/scan-speed/measure.js, tools/scan-speed/generate-tree.js, docs/measurements/scan-speed.md
+**Done when:** `node tools/scan-speed/measure.js` exits 0 and writes `docs/measurements/scan-speed.md` containing: machine (model, CPU, RAM, OS version), Node and Electron versions, the method (how the generated tree was shaped, how peak RSS was obtained, warm or cold cache, number of runs), and for each of (a) and (b) the number of files found, the individual wall time and peak RSS values and their min, median and max, with at least 5 runs each; the generated tree is created under the system temp directory on the internal APFS volume and removed afterwards, and the script writes nothing inside the real directory tree.
+**Depends on:** 9
+**Estimate:** 3
+**Notes:** Covers FR-12 (measurement; input to the blocked product FR-20 targets, which this task does not set). This is a measurement task, not product code. Facts only: no cause, comparison to Finder or Bridge, or conclusion about adequacy. The /System/Library run is read-only and touches no user data; its file count is recorded because it may change across OS updates. If part of the tree is unreadable, the count of skipped directories is recorded.
 **Done:** [ ]
 
 ## Summary
-- Total tasks: 26
-- Total estimated effort: 71 points
-- Critical path: 1 → 3 → 8 → 9 → 11 → 13 → 14 → 15 → 16 (tasks 1-16); review-fix chain after 15: 17 → 19 → 20 → 25 → 26
-- Risks: Task 1 (Electron binary download may fail in the sandbox; Playwright's Electron support with Electron 44 is unverified and blocks every e2e task, 13 to 16); Task 7 (external and network volumes need the user's hardware); Task 4 (JSON store scale is unmeasured); Task 14 (virtualized rendering bound is chosen by the implementer); Task 5 (ctime/birthtime/atime ordering is subtle); Tasks 17-26 are review fixes sequenced by shared files (17 first; the rest follow in dependency order; each task cites its review finding number, which differs from the task number).
+- Total tasks: 34
+- Total estimated effort: 89 points
+- Critical path: 1 → 3 → 8 → 9 → 11 → 13 → 14 → 15 → 16 (tasks 1-16); review-fix chain after 15: 17 → 19 → 20 → 25 → 26; follow-ups after 26: 27 → 29 → 30, 27 → 31 → 32, 21 → 28, and measurements 33 (after 26) and 34 (after 9)
+- Risks: Task 1 (Electron binary download may fail in the sandbox; Playwright's Electron support with Electron 44 is unverified and blocks every e2e task, 13 to 16); Task 7 (external and network volumes need the user's hardware); Task 4 (JSON store scale is unmeasured); Task 14 (virtualized rendering bound is chosen by the implementer); Task 5 (ctime/birthtime/atime ordering is subtle); Tasks 17-26 are review fixes sequenced by shared files (17 first; the rest follow in dependency order; each task cites its review finding number, which differs from the task number); Tasks 27-34 are follow-ups, of which 33 and 34 produce measurements only and 28 may find behaviour that needs a product decision about migrating older store formats.
 
 ## Open Questions
 None.

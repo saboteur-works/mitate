@@ -84,6 +84,8 @@ Someone with thousands to tens of thousands of files across a few folders and dr
 - FR-23: Users MUST be able to preview or play jxl, alac, caf and ac3, and play ts/mts/m2ts. [US-4] [BLOCKED: OQ-2]
 - FR-24: A video whose picture or sound doesn't decode MUST say which is missing, not play silently or blank. [US-4]
 - FR-25: Thumbnails and converted playback copies in app storage MUST stay within a size cap that has a default value and that users can change in settings. When the cap is reached, the least recently used entries MUST be evicted. Evicted items MUST be regenerated on next use. The default value is set in the relevant feature spec. [US-4]
+- FR-26: Users MUST be able to trigger a rescan of a collection, which updates its index from disk. The app MUST NOT rescan automatically on launch; on launch it MUST show the stored index. [US-1]
+- FR-27: Users MUST be able to add a folder to an existing collection, subject to the overlap confirmation in FR-5. [US-1]
 
 ## Constraints
 - **Platform.** Desktop ships on macOS first. Requirements other than "Reveal in Finder" SHOULD NOT assume macOS, because Windows and Linux follow, post-v2. The MVP format handling relies on macOS tools, so each later platform needs its own.
@@ -134,7 +136,7 @@ Answer: the app warns and requires confirmation; on confirm both folders stay (F
 - [v1] Search, filters, tags, live index updates, more preview types, opt-in hidden files, packages and symlinks, and metadata display (`media-organizer-v1.md`).
 - [v2] Content search, smart collections, an offline-drive catalog, a duplicate report and a paid mobile app (`media-organizer-v2.md`).
 - [post-v2] Windows and Linux desktop releases.
-- [post-v2] Third-party decoders, pending OQ-4.
+- [post-v2] Third-party decoders (wmv, wma, avi, flv, DNxHD). Deferred per the OQ-4 resolution: index-only in MVP (FR-14), revisited post-v2.
 - [post-v2] Adding individual files to a collection.
 
 ## Resolved decisions (2026-10-18)

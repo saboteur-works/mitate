@@ -12,7 +12,7 @@ Each requirement belongs to exactly one feature, or is listed as unassigned with
 - **logic:** recursive discovery, with hidden files, package contents and symlinks skipped, and a supported-type registry;
 - **interface:** a folder picker, a collection with a name, and a tree view.
 
-**Requirements covered:** FR-1, FR-7, FR-8, FR-9, FR-10, FR-17
+**Requirements covered:** FR-1, FR-7, FR-8, FR-9, FR-10, FR-17, FR-26
 **User stories:** US-1, US-3
 **Depends on:** none
 **Branch suggestion:** feat/collection-index-tree
@@ -41,7 +41,7 @@ Each requirement belongs to exactly one feature, or is listed as unassigned with
 - **logic:** switching the active collection, detecting overlapping folders in both directions, and showing each file only once;
 - **interface:** a collection switcher, rename and delete, removing a folder, and a confirmation when adding a folder that is inside, or contains, one already in the collection.
 
-**Requirements covered:** FR-2, FR-3, FR-4, FR-5, FR-6
+**Requirements covered:** FR-2, FR-3, FR-4, FR-5, FR-6, FR-27
 **User stories:** US-1, US-2, US-3
 **Depends on:** 1
 **Branch suggestion:** feat/collection-management
@@ -134,7 +134,7 @@ Each requirement belongs to exactly one feature, or is listed as unassigned with
 - **Converted copies share the Feature 6 cache.** They fall under FR-25 and are evicted least recently used first.
 
 ## Coverage check
-- Requirements covered: FR-1 → Feature 1, FR-2 → Feature 3, FR-3 → Feature 3, FR-4 → Feature 3, FR-5 → Feature 3, FR-6 → Feature 3, FR-7 → Feature 1, FR-8 → Feature 1, FR-9 → Feature 1, FR-10 → Feature 1, FR-11 → Feature 4, FR-12 → Feature 6, FR-13 → Feature 7, FR-14 → Feature 6, FR-15 → Feature 2, FR-16 → Feature 2, FR-17 → Feature 1, FR-18 → Feature 5, FR-19 → Feature 5, FR-21 → Feature 7, FR-22 → Feature 8, FR-24 → Feature 7, FR-25 → Feature 6
+- Requirements covered: FR-1 → Feature 1, FR-2 → Feature 3, FR-3 → Feature 3, FR-4 → Feature 3, FR-5 → Feature 3, FR-6 → Feature 3, FR-7 → Feature 1, FR-8 → Feature 1, FR-9 → Feature 1, FR-10 → Feature 1, FR-11 → Feature 4, FR-12 → Feature 6, FR-13 → Feature 7, FR-14 → Feature 6, FR-15 → Feature 2, FR-16 → Feature 2, FR-17 → Feature 1, FR-18 → Feature 5, FR-19 → Feature 5, FR-21 → Feature 7, FR-22 → Feature 8, FR-24 → Feature 7, FR-25 → Feature 6, FR-26 → Feature 1, FR-27 → Feature 3
 - Unassigned requirements:
   - **FR-20, blocked.** Performance numbers wait on a measurement task. It is a target across Features 1, 4 and 5 rather than a slice of its own. Attach its acceptance criteria to those features once the targets exist.
   - **FR-23, blocked.** Its formats wait on the decode, external-drive conversion, segment-playback and jxl experiments. They are decided format by format afterward, and will likely fall into Feature 7 or 8.
