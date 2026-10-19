@@ -312,3 +312,96 @@ describe('createCollection writes the store once (FR-18)', () => {
     expect(storage.listFolders()).toEqual([]);
   });
 });
+
+// Real unreadable folder (FR-4, FR-17). chmod happens only on a folder inside a
+// temp copy of the fixture tree built here. Root bypasses mode bits, so the
+// tests cannot make a folder unreadable there and are skipped.
+const runningAsRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+
+describe.skipIf(runningAsRoot)('real unreadable collection folder (mode 000)', () => {
+  const { lockFolder, unlockFolder } = require('../support/fixture-tree.js');
+  let copy;
+  let locked; // Photos: becomes unreadable
+  let open1; // Docs and Music: stay readable, snapshotted
+  let open2;
+
+  beforeEach(() => {
+    copy = buildFixtureTree();
+    locked = path.join(copy.root, 'Photos');
+    open1 = path.join(copy.root, 'Docs');
+    open2 = path.join(copy.root, 'Music');
+  });
+  afterEach(() => {
+    // Restore permissions before the temp tree is removed, whatever happened.
+    try {
+      unlockFolder(locked);
+    } finally {
+      cleanupFixtureTree(copy.root);
+    }
+  });
+
+  const lockedState = () => {
+    const s = fs.statSync(locked);
+    return { mode: s.mode & 0o777, ino: s.ino, mtimeMs: s.mtimeMs, uid: s.uid };
+  };
+  const snapOthers = (role) => [open1, open2].map((d) => readonly.snapshot(d, { role }));
+  const assertOthersUnchanged = (before) => {
+    const after = snapOthers('after');
+    before.forEach((b, i) => expect(readonly.assert(b, after[i])).toBeDefined());
+  };
+  const assertLockedUntouched = (stateBefore, parentBefore) => {
+    expect(lockedState()).toEqual(stateBefore);
+    expect(stateBefore.mode).toBe(0);
+    expect(fs.readdirSync(copy.root).sort()).toEqual(parentBefore);
+  };
+
+  it('create marks the locked folder unavailable, records no files for it, and writes nothing there', async () => {
+    lockFolder(locked);
+    const stateBefore = lockedState();
+    const parentBefore = fs.readdirSync(copy.root).sort();
+    const before = snapOthers('before');
+
+    const created = await service(runScan).createCollection('c', [locked, open1]);
+    const lockedFolder = created.folders.find((f) => f.path === locked);
+    const openFolder = created.folders.find((f) => f.path === open1);
+    expect(lockedFolder.unavailable).toBe(true);
+    expect(openFolder.unavailable).toBe(false);
+    expect(created.files.filter((f) => f.folderId === lockedFolder.id)).toEqual([]);
+    expect(created.files.filter((f) => f.folderId === openFolder.id).length).toBeGreaterThan(0);
+
+    const stored = openStorage({ location: { file: storageFile } });
+    expect(stored.getFolder(lockedFolder.id).unavailable).toBe(true);
+    expect(stored.getIndex({ folderId: lockedFolder.id })).toEqual([]);
+    assertOthersUnchanged(before);
+    assertLockedUntouched(stateBefore, parentBefore);
+  });
+
+  it('load on a re-instantiated service marks it unavailable and keeps its indexed files flagged', async () => {
+    const created = await service(runScan).createCollection('c', [locked, open1]);
+    const lockedId = created.folders.find((f) => f.path === locked).id;
+    const indexed = created.files.filter((f) => f.folderId === lockedId);
+    expect(indexed.length).toBeGreaterThan(0);
+
+    lockFolder(locked);
+    const stateBefore = lockedState();
+    const parentBefore = fs.readdirSync(copy.root).sort();
+    const before = snapOthers('before');
+
+    const [loaded] = await service(throwingScan).loadCollections();
+    expect(loaded.folders.find((f) => f.id === lockedId).unavailable).toBe(true);
+    expect(loaded.folders.find((f) => f.path === open1).unavailable).toBe(false);
+    const keptFiles = loaded.files.filter((f) => f.folderId === lockedId);
+    expect(keptFiles).toHaveLength(indexed.length);
+    expect(keptFiles.every((f) => f.unavailable === true)).toBe(true);
+    expect(loaded.files.filter((f) => f.folderId !== lockedId).every((f) => !f.unavailable)).toBe(true);
+    expect(openStorage({ location: { file: storageFile } }).getFolder(lockedId).unavailable).toBe(true);
+
+    const [summary] = await service(throwingScan).listCollectionSummaries();
+    expect(summary.folders.map((f) => [f.path, f.unavailable])).toEqual([
+      [locked, true],
+      [open1, false],
+    ]);
+    assertOthersUnchanged(before);
+    assertLockedUntouched(stateBefore, parentBefore);
+  });
+});

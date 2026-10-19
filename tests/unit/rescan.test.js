@@ -358,3 +358,55 @@ describe('rescan writes the store once (FR-18)', () => {
     await expect(svc.rescanCollection(id)).resolves.toBeDefined();
   });
 });
+
+// Real unreadable folder (FR-4, FR-17, FR-20). chmod happens only on a folder
+// inside the temp fixture copy built in beforeEach. Root bypasses mode bits, so
+// the folder cannot be made unreadable there and the test is skipped.
+const runningAsRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+
+describe.skipIf(runningAsRoot)('rescan with a real unreadable folder (mode 000)', () => {
+  const { lockFolder, unlockFolder } = require('../support/fixture-tree.js');
+  const locked = () => path.join(fixture.root, 'Photos');
+  const open = () => path.join(fixture.root, 'Docs');
+  const music = () => path.join(fixture.root, 'Music');
+  const state = () => {
+    const s = fs.statSync(locked());
+    return { mode: s.mode & 0o777, ino: s.ino, mtimeMs: s.mtimeMs, uid: s.uid };
+  };
+
+  afterEach(() => {
+    // Inner hook runs before the outer afterEach removes the tree.
+    unlockFolder(locked());
+  });
+
+  it('skips it, keeps its stored files, leaves it unavailable, and rescans the other folder', async () => {
+    const created = await create([locked(), open()]);
+    const lockedId = created.folders.find((f) => f.path === locked()).id;
+    const openId = created.folders.find((f) => f.path === open()).id;
+    const storedBefore = storage.getIndex({ folderId: lockedId });
+    expect(storedBefore.length).toBeGreaterThan(0);
+
+    fs.writeFileSync(path.join(open(), 'added-later.jpg'), 'x');
+    lockFolder(locked());
+    const stateBefore = state();
+    const parentBefore = fs.readdirSync(fixture.root).sort();
+    const docsBefore = readonly.snapshot(open(), { role: 'before' });
+    const musicBefore = readonly.snapshot(music(), { role: 'before' });
+
+    const result = await createRescanService({ storage }).rescanCollection(created.collection.id);
+    expect(result.summary).toEqual({ rescanned: [openId], skipped: [lockedId] });
+    expect(result.folders.find((f) => f.id === lockedId).unavailable).toBe(true);
+    expect(storage.getFolder(lockedId).unavailable).toBe(true);
+    expect(storage.getIndex({ folderId: lockedId })).toEqual(storedBefore);
+    const keptFiles = result.files.filter((f) => f.folderId === lockedId);
+    expect(keptFiles).toHaveLength(storedBefore.length);
+    expect(keptFiles.every((f) => f.unavailable === true)).toBe(true);
+    expect(names(result)).toContain('added-later.jpg');
+
+    expect(readonly.assert(docsBefore, readonly.snapshot(open(), { role: 'after' }))).toBeDefined();
+    expect(readonly.assert(musicBefore, readonly.snapshot(music(), { role: 'after' }))).toBeDefined();
+    expect(state()).toEqual(stateBefore);
+    expect(stateBefore.mode).toBe(0);
+    expect(fs.readdirSync(fixture.root).sort()).toEqual(parentBefore);
+  });
+});

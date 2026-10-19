@@ -21,6 +21,11 @@
  *   cleanupFixtureTree(root) -> removes the tree; safe to call twice. It only
  *     removes directories whose basename starts with "mo-fixture-".
  *
+ *   lockFolder(dir) / unlockFolder(dir) -> chmod 0o000 / 0o755 on a folder that
+ *     lies inside a fixture tree (an ancestor's basename starts with
+ *     "mo-fixture-"); refuses anything else. Tests must unlock before
+ *     cleanupFixtureTree, because rmSync cannot descend into a 000 folder.
+ *
  * Contents are small and deterministic. Nothing outside root is touched.
  */
 const fs = require('node:fs');
@@ -127,4 +132,19 @@ function cleanupFixtureTree(root) {
   fs.rmSync(root, { recursive: true, force: true });
 }
 
-module.exports = { buildFixtureTree, cleanupFixtureTree };
+function assertInsideFixture(dir) {
+  const resolved = path.resolve(dir);
+  const inside = resolved.split(path.sep).slice(0, -1).some((part) => part.startsWith(PREFIX));
+  if (!inside) throw new Error(`refusing to change permissions outside a fixture tree: ${dir}`);
+  return resolved;
+}
+
+function lockFolder(dir) {
+  fs.chmodSync(assertInsideFixture(dir), 0o000);
+}
+
+function unlockFolder(dir) {
+  fs.chmodSync(assertInsideFixture(dir), 0o755);
+}
+
+module.exports = { buildFixtureTree, cleanupFixtureTree, lockFolder, unlockFolder };
