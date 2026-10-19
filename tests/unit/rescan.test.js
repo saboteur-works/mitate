@@ -224,13 +224,16 @@ describe('concurrent rescans (FR-20)', () => {
   });
 
   it('does not block a rescan of a different collection', async () => {
-    const a = await create([folderWith('a-')]);
+    const dirA = folderWith('a-');
+    const a = await create([dirA]);
     const b = await create([folderWith('b-')]);
     const gate = deferred();
     const calls = [];
+    // Gate by path: only collection A's folder waits. Which scan is called first
+    // is not deterministic (each rescan awaits a readability check first).
     const scan = async (p) => {
       calls.push(p);
-      if (calls.length === 1) await gate.promise;
+      if (path.basename(p) === path.basename(dirA)) await gate.promise;
       return runScan(p);
     };
     const rescan = createRescanService({ storage, scan });
