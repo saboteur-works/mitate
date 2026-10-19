@@ -150,11 +150,101 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Notes:** Covers FR-17, FR-13, FR-3 (end-to-end relaunch without re-selection). Uses the Task 2 fixture tree including xattr files, symlinks and the package bundle.
 **Done:** [ ]
 
+### Task 17: Remove duplicated scan and readability helpers
+**What:** Export `isReadableDirectory` and the default scan once and import them in rescan.js and service.js, and remove the unused async `discover` walk from discover.js, keeping `discoverSync`.
+**Files:** src/main/discovery/discover.js, src/main/collections/rescan.js, src/main/collections/service.js, tests/unit/discovery.test.js
+**Done when:** `npx vitest run` exits 0 for the whole unit suite, and a test asserts the module exports of discover.js do not include the async `discover` while `discoverSync` is still exported; `defaultScan` and `isReadableDirectory` are each defined in exactly one file (checked by `grep -rn "function defaultScan\|function isReadableDirectory" src` returning one line each); tests in discovery.test.js that only covered the removed function are switched to `discoverSync` or deleted, with the behaviours listed in Task 8 still asserted.
+**Depends on:** 8, 12
+**Estimate:** 2
+**Notes:** Review finding 26 (rescan.js:30, service.js:85, discover.js). Covers FR-4, FR-5. Refactor with no behaviour change; the export test is the only one that fails before the change. Runs first of the fix tasks because 18, 19 and 25 edit the same files.
+**Done:** [ ]
+
+### Task 18: Fix storage-location guard for children named `..*`
+**What:** Change `contains()` so only a relative path equal to `..` or starting with `..` plus the path separator (or an absolute relative result) counts as outside; a child named `..appdata` is inside.
+**Files:** src/main/collections/service.js, tests/unit/collection-service.test.js
+**Done when:** `npx vitest run tests/unit/collection-service.test.js` exits 0, with a new test that a storage location at `<collection-folder>/..appdata` is rejected as inside the collection folder (the test fails on the pre-fix code, where `contains()` returns false for it), and tests that a sibling and a parent path are still classified correctly.
+**Depends on:** 17
+**Estimate:** 1
+**Notes:** Review finding 17 (service.js:82). Covers FR-13. Depends on 17 only to avoid concurrent edits of service.js.
+**Done:** [ ]
+
+### Task 19: Re-read folder state after a successful rescan before clearing unavailable
+**What:** In rescan, decide whether to clear a folder's unavailable flag from the folder state re-read from storage after the scan succeeds, not from the snapshot taken before the await.
+**Files:** src/main/collections/rescan.js, tests/unit/rescan.test.js
+**Done when:** `npx vitest run tests/unit/rescan.test.js` exits 0, with a new test where the stored folder state changes during an awaited scan (for example the folder is marked unavailable by another operation) and the final stored flag reflects the re-read state rather than the pre-await snapshot, plus a test that a folder that was unavailable and scans successfully is cleared (the first test fails on the pre-fix code).
+**Depends on:** 17
+**Estimate:** 2
+**Notes:** Review finding 22 (rescan.js:67). Covers FR-4, FR-20. Depends on 17 because both edit rescan.js.
+**Done:** [ ]
+
+### Task 20: Keep Rescan disabled while a rescan runs, and reject concurrent rescans in main
+**What:** Track per-collection in-flight rescan state in the renderer so `collection-selected` does not re-enable Rescan during a rescan, and make the main-process rescan reject (or ignore, with a defined result) a second rescan of the same collection while one is running.
+**Files:** src/renderer/rescan-button.js, src/main/collections/rescan.js, src/main/ipc.js, tests/unit/rescan.test.js, tests/e2e/rescan.spec.js
+**Done when:** `npx vitest run tests/unit/rescan.test.js` exits 0 with a new test that a second rescan of the same collection started while the first is pending returns the defined rejected result and runs discovery once, while a rescan of a different collection is not blocked; and `npm run test:e2e -- tests/e2e/rescan.spec.js` exits 0 with a new test that, with a slow stubbed rescan, selecting another collection and back leaves Rescan disabled until the rescan finishes (both new tests fail on the pre-fix code).
+**Depends on:** 19, 15
+**Estimate:** 2
+**Notes:** Review finding 20 (rescan-button.js:17). Covers FR-20. Depends on 19 because both edit rescan.js.
+**Done:** [ ]
+
+### Task 21: Report a corrupt or newer-format store at startup without touching it
+**What:** Wrap storage opening at app startup so a corrupt or newer-`FORMAT_VERSION` store.json is caught, an error is shown to the user (a message window or dialog naming the file), the app does not crash silently, and store.json is neither overwritten nor deleted.
+**Files:** src/main/main.js, src/main/startup.js, tests/unit/startup.test.js
+**Done when:** `npx vitest run tests/unit/startup.test.js` exits 0, with tests that (a) a store.json with invalid JSON and (b) one with a `FORMAT_VERSION` above the supported one each make the startup function call the injected error reporter with a message naming the file, resolve without throwing, and leave the store.json bytes identical to before (the tests fail on the pre-fix code, where the error is unhandled and no reporter exists); and a valid store opens with no error reported.
+**Depends on:** 11
+**Estimate:** 3
+**Notes:** Review finding 18 (main.js:25). Covers FR-2, FR-18. The startup logic is extracted to src/main/startup.js with the dialog injected so it is unit-testable; the real dialog call in main.js is not covered by a test here.
+**Done:** [ ]
+
+### Task 22: Disable Create while a collection is being created
+**What:** Disable the Create control for the duration of the `createCollection` call and re-enable it on completion or failure, so repeated clicks cannot create duplicates.
+**Files:** src/renderer/create-collection.js, tests/e2e/create-collection.spec.js
+**Done when:** `npm run test:e2e -- tests/e2e/create-collection.spec.js` exits 0, with a new test that stubs `createCollection` to resolve slowly, double-clicks Create, and asserts the button is disabled during the call, exactly one collection exists afterwards, and the button is enabled again (fails on the pre-fix code, which creates two).
+**Depends on:** 13
+**Estimate:** 1
+**Notes:** Review finding 19 (create-collection.js:71). Covers FR-1. E2E is used because the behaviour is renderer-only.
+**Done:** [ ]
+
+### Task 23: Discard stale collection-view responses
+**What:** Give each `selectCollection` call a request token and apply a `getCollectionView` response only if it is still the latest request, so the displayed tree always matches the highlighted collection.
+**Files:** src/renderer/create-collection.js, tests/e2e/tree-view.spec.js
+**Done when:** `npm run test:e2e -- tests/e2e/tree-view.spec.js` exits 0, with a new test that stubs `getCollectionView` so collection A's response resolves after B's, clicks A then B (and B then A), and asserts the tree shown is that of the last-clicked collection (fails on the pre-fix code, where the late response overwrites the tree).
+**Depends on:** 22, 14
+**Estimate:** 2
+**Notes:** Review finding 21 (create-collection.js:48). Covers FR-11. Depends on 22 because both edit create-collection.js. E2E is used because the behaviour is renderer-only.
+**Done:** [ ]
+
+### Task 24: Give tree nodes an identity unique per root
+**What:** Make every tree node's identity unique per root (for example root id plus relative path) and use it for expansion state, the `data-path` attribute and row keys, so root `/a/b` and subfolder `/a/b` under root `/a` do not collide; overlapping roots are not rejected.
+**Files:** src/shared/tree-model.js, src/renderer/tree-view.js, tests/unit/tree-model.test.js, tests/e2e/tree-view.spec.js
+**Done when:** `npx vitest run tests/unit/tree-model.test.js` exits 0 with a new test that a collection with roots `/a` and `/a/b` yields node ids that are all distinct, including the two nodes for `/a/b`; and `npm run test:e2e -- tests/e2e/tree-view.spec.js` exits 0 with a new test on that collection that expanding one of the two `/a/b` nodes does not expand the other and both rows render with distinct `data-path` values (both fail on the pre-fix code).
+**Depends on:** 14, 23
+**Estimate:** 3
+**Notes:** Review finding 23 (service.js:114 accepts `/a` and `/a/b`). Product decision (Feature 3, product FR-5, OQ-6 resolved): overlapping folders are allowed and both are kept; files under the overlap are indexed twice until Feature 3 is accepted. So this task does not reject overlaps and adds no validation. Covers FR-11. Depends on 23 only to sequence renderer edits.
+**Done:** [ ]
+
+### Task 25: Summary-only collection list and per-folder index lookups
+**What:** Make `collections:list` return summaries only (name, id, folder count, per-folder unavailable flag) with no file records and no deep copy of the index, and make the collection view read the index per folder through `getIndex({folderId})` instead of walking the whole index per collection.
+**Files:** src/main/storage/index.js, src/main/collections/service.js, src/main/ipc.js, src/renderer/create-collection.js, tests/unit/storage.test.js, tests/unit/collection-service.test.js
+**Done when:** `npx vitest run tests/unit/storage.test.js tests/unit/collection-service.test.js` exits 0, with tests that (a) the list payload for a collection with indexed files contains no file records at any depth (asserted by walking the payload) while still carrying name, id, folder count and per-folder unavailable, (b) `getIndex({folderId})` returns only that folder's records, and (c) the view for a collection with several folders returns the same tree input as before from per-folder lookups (the list test fails on the pre-fix code); and `npm run test:e2e -- tests/e2e/create-collection.spec.js` still exits 0.
+**Depends on:** 18, 20, 23, 17
+**Estimate:** 3
+**Notes:** Review finding 24 (service.js:102). Covers FR-2, FR-12. Makes no performance claim; the verifiable outcome is the payload content. Depends on 17 and 18 (service.js), 20 (ipc.js) and 23 (create-collection.js) to avoid concurrent edits.
+**Done:** [ ]
+
+### Task 26: Batch storage mutations into one atomic write per operation
+**What:** Add a transaction/commit API to the storage module so the mutations of one operation are applied in memory and persisted in a single write, keeping the atomic write-then-rename; use it in `createCollection` and rescan.
+**Files:** src/main/storage/index.js, src/main/collections/service.js, src/main/collections/rescan.js, tests/unit/storage.test.js, tests/unit/collection-service.test.js, tests/unit/rescan.test.js
+**Done when:** `npx vitest run tests/unit/storage.test.js tests/unit/collection-service.test.js tests/unit/rescan.test.js` exits 0, with tests that count writes of the store file (spy on the write-then-rename step) and assert exactly 1 for `createCollection` with N folders (for N = 1 and N = 3) and exactly 1 for a rescan, that a transaction that throws before commit writes nothing and leaves the stored file unchanged, and that the write still goes through a temp file then rename (the count tests fail on the pre-fix code, which writes 1+2N times for creation).
+**Depends on:** 25, 19, 21
+**Estimate:** 3
+**Notes:** Review finding 25 (storage/index.js:130). Covers FR-18. The only claim is the write count; no performance claim is made. Depends on 25 (storage and service.js) and 19 (rescan.js) to avoid concurrent edits; 21 is listed so startup error handling lands before storage behaviour changes.
+**Done:** [ ]
+
 ## Summary
-- Total tasks: 16
-- Total estimated effort: 49 points
-- Critical path: 1 → 3 → 8 → 9 → 11 → 13 → 14 → 15 → 16
-- Risks: Task 1 (Electron binary download may fail in the sandbox; Playwright's Electron support with Electron 44 is unverified and blocks every e2e task, 13 to 16); Task 7 (external and network volumes need the user's hardware); Task 4 (JSON store scale is unmeasured); Task 14 (virtualized rendering bound is chosen by the implementer); Task 5 (ctime/birthtime/atime ordering is subtle).
+- Total tasks: 26
+- Total estimated effort: 71 points
+- Critical path: 1 → 3 → 8 → 9 → 11 → 13 → 14 → 15 → 16 (tasks 1-16); review-fix chain after 15: 17 → 19 → 20 → 25 → 26
+- Risks: Task 1 (Electron binary download may fail in the sandbox; Playwright's Electron support with Electron 44 is unverified and blocks every e2e task, 13 to 16); Task 7 (external and network volumes need the user's hardware); Task 4 (JSON store scale is unmeasured); Task 14 (virtualized rendering bound is chosen by the implementer); Task 5 (ctime/birthtime/atime ordering is subtle); Tasks 17-26 are review fixes sequenced by shared files (17 first; the rest follow in dependency order; each task cites its review finding number, which differs from the task number).
 
 ## Open Questions
 None.
