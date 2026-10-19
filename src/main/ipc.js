@@ -15,6 +15,9 @@
  *   collections:rescan  (collectionId) -> { ok: true, view, summary } | { ok: false, error }
  *                          user-triggered rescan (FR-20); needs rescanService, else
  *                          { ok: false, error }. Never invoked on launch.
+ *                          A rescan already running for the same collection gives
+ *                          { ok: false, error, busy: true } (error code
+ *                          RESCAN_IN_PROGRESS from the rescan service).
  *
  * Service errors are returned as { ok: false, error } so the renderer can show
  * the message without Electron's "Error invoking remote method" prefix.
@@ -35,7 +38,9 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, getWindow
     try {
       return { ok: true, ...(await fn()) };
     } catch (err) {
-      return { ok: false, error: err && err.message ? err.message : String(err) };
+      const failure = { ok: false, error: err && err.message ? err.message : String(err) };
+      if (err && err.code === 'RESCAN_IN_PROGRESS') failure.busy = true;
+      return failure;
     }
   }
 

@@ -4,7 +4,7 @@ const path = require('node:path');
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const { openStorage } = require('./storage/index.js');
 const { startStorage } = require('./startup.js');
-const { createCollectionService } = require('./collections/service.js');
+const { createCollectionService, defaultScan } = require('./collections/service.js');
 const { createRescanService } = require('./collections/rescan.js');
 const { registerIpc } = require('./ipc.js');
 
@@ -22,6 +22,17 @@ function createWindow() {
   return win;
 }
 
+// Test-only hook: MEDIA_ORGANIZER_RESCAN_DELAY_MS delays each rescan scan call so
+// e2e tests can observe the in-flight state. Unset in normal use (no effect).
+function rescanScan() {
+  const delay = Number(process.env.MEDIA_ORGANIZER_RESCAN_DELAY_MS);
+  if (!(delay > 0)) return defaultScan;
+  return async (folderPath) => {
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    return defaultScan(folderPath);
+  };
+}
+
 app.whenReady().then(async () => {
   const started = await startStorage({
     baseDir: app.getPath('userData'),
@@ -34,7 +45,7 @@ app.whenReady().then(async () => {
   }
   const storage = started.storage;
   const service = createCollectionService({ storage });
-  const rescanService = createRescanService({ storage });
+  const rescanService = createRescanService({ storage, scan: rescanScan() });
   registerIpc({ ipcMain, dialog, service, rescanService, getWindow: () => BrowserWindow.getFocusedWindow() });
   createWindow();
   app.on('activate', () => {

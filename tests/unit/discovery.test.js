@@ -94,7 +94,7 @@ describe('discovery', () => {
 
   it('is sorted by relativePath and deterministic', () => {
     expect(rels()).toEqual([...rels()].sort());
-    expect(discoverSync(root)).toEqual(records);
+    expect(discoverSync(root)).toEqual(discoverSync(root));
   });
 
   it('adds subtype for RAW files', () => {

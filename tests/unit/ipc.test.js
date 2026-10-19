@@ -84,4 +84,17 @@ describe('registerIpc', () => {
     });
     expect((await setup().invoke(CHANNELS.rescanCollection, 'x')).ok).toBe(false);
   });
+
+  it('maps a concurrent-rescan rejection to { ok: false, error, busy: true }', async () => {
+    const busy = {
+      rescanCollection: async () => {
+        throw Object.assign(new Error('already running'), { code: 'RESCAN_IN_PROGRESS' });
+      },
+    };
+    expect(await setup({ rescanService: busy }).invoke(CHANNELS.rescanCollection, 'x')).toEqual({
+      ok: false,
+      error: 'already running',
+      busy: true,
+    });
+  });
 });

@@ -19,10 +19,11 @@ const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tre
 const { openStorage } = require('../../src/main/storage/index.js');
 const { createCollectionService } = require('../../src/main/collections/service.js');
 
-async function launch(userDataDir) {
+async function launch(userDataDir, env = {}) {
   const app = await electron.launch({
     args: ['.', `--user-data-dir=${userDataDir}`],
     cwd: path.join(__dirname, '..', '..'),
+    env: { ...process.env, ...env },
   });
   const window = await app.firstWindow();
   await window.waitForLoadState('domcontentloaded');
@@ -98,6 +99,57 @@ test('rescan is user-triggered, picks up added and removed files, and relaunch s
   } finally {
     if (session) await session.app.close();
     cleanupFixtureTree(root);
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  }
+});
+
+// Slowness comes from MEDIA_ORGANIZER_RESCAN_DELAY_MS (test-only hook in
+// src/main/main.js): every scan call in a rescan waits that long. The preload
+// object is a frozen contextBridge object, so the renderer API is not wrapped.
+test('Rescan stays disabled for a collection whose rescan is running, even after selecting another collection and back', async () => {
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-organizer-rescan-busy-e2e-'));
+  const fixture = buildFixtureTree();
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), 'media-organizer-rescan-busy-other-'));
+  fs.writeFileSync(path.join(other, 'b.pdf'), 'b\n');
+  let session;
+  try {
+    const storage = openStorage({ location: { baseDir: userDataDir } });
+    const service = createCollectionService({ storage });
+    await service.createCollection('Alpha', [fixture.root]);
+    await service.createCollection('Beta', [other]);
+
+    session = await launch(userDataDir, { MEDIA_ORGANIZER_RESCAN_DELAY_MS: '3000' });
+    const { window } = session;
+    const items = window.getByTestId('collection-item');
+    const alpha = items.filter({ hasText: 'Alpha' });
+    const beta = items.filter({ hasText: 'Beta' });
+    const rescan = window.getByTestId('rescan');
+    await expect(items).toHaveCount(2, { timeout: 30000 });
+
+    await alpha.click();
+    await expect(alpha).toHaveClass(/collection-selected/, { timeout: 30000 });
+    await expect(rescan).toBeEnabled();
+    await rescan.click();
+    await expect(rescan).toBeDisabled();
+
+    // Another collection has no rescan running: Rescan is enabled for it.
+    await beta.click();
+    await expect(beta).toHaveClass(/collection-selected/, { timeout: 30000 });
+    await expect(rescan).toBeEnabled();
+
+    // Back to the collection whose rescan is still running: disabled again.
+    await alpha.click();
+    await expect(alpha).toHaveClass(/collection-selected/, { timeout: 30000 });
+    await expect(rescan).toBeDisabled();
+    await expect(window.getByTestId('rescan-status')).toHaveText('Rescanning...');
+
+    // It re-enables only once the rescan has finished.
+    await expect(window.getByTestId('rescan-status')).toContainText('Rescanned 1 folders', { timeout: 30000 });
+    await expect(rescan).toBeEnabled();
+  } finally {
+    if (session) await session.app.close();
+    cleanupFixtureTree(fixture.root);
+    fs.rmSync(other, { recursive: true, force: true });
     fs.rmSync(userDataDir, { recursive: true, force: true });
   }
 });

@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tree.js');
@@ -178,6 +178,86 @@ describe('rescanCollection', () => {
     await createRescanService({ storage }).rescanCollection(created.collection.id);
     const after = readonly.snapshot(fixture.root, { role: 'after' });
     expect(readonly.assert(before, after)).toBeDefined();
+  });
+});
+
+describe('concurrent rescans (FR-20)', () => {
+  function deferred() {
+    let resolve;
+    const promise = new Promise((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+  const folderWith = (prefix) => {
+    const dir = fs.mkdtempSync(path.join(work, prefix));
+    fs.writeFileSync(path.join(dir, 'one.jpg'), 'x');
+    return dir;
+  };
+
+  it('rejects a second rescan of the same collection while one is pending, without scanning again', async () => {
+    const created = await create([folderWith('busy-')]);
+    const id = created.collection.id;
+    const gate = deferred();
+    const calls = [];
+    const scan = async (p) => {
+      calls.push(p);
+      await gate.promise;
+      return runScan(p);
+    };
+    const rescan = createRescanService({ storage, scan });
+
+    const first = rescan.rescanCollection(id);
+    await vi.waitFor(() => expect(calls.length).toBe(1)); // first scan is now pending on the gate
+    const second = await rescan.rescanCollection(id).catch((err) => err);
+    expect(second).toBeInstanceOf(Error);
+    expect(second.code).toBe('RESCAN_IN_PROGRESS');
+    expect(calls.length).toBe(1);
+
+    gate.resolve();
+    const done = await first;
+    expect(done.summary.rescanned.length).toBe(1);
+    expect(calls.length).toBe(1);
+
+    // The marker is cleared: a new rescan runs (gate is already open).
+    const again = await rescan.rescanCollection(id);
+    expect(again.summary.rescanned.length).toBe(1);
+    expect(calls.length).toBe(2);
+  });
+
+  it('does not block a rescan of a different collection', async () => {
+    const a = await create([folderWith('a-')]);
+    const b = await create([folderWith('b-')]);
+    const gate = deferred();
+    const calls = [];
+    const scan = async (p) => {
+      calls.push(p);
+      if (calls.length === 1) await gate.promise;
+      return runScan(p);
+    };
+    const rescan = createRescanService({ storage, scan });
+    const first = rescan.rescanCollection(a.collection.id);
+    const other = await rescan.rescanCollection(b.collection.id);
+    expect(other.summary.rescanned.length).toBe(1);
+    gate.resolve();
+    await first;
+    expect(calls.length).toBe(2);
+  });
+
+  it('clears the in-flight marker when the rescan fails', async () => {
+    const created = await create([folderWith('fail-marker-')]);
+    const id = created.collection.id;
+    let broken = true;
+    const spy = {
+      ...storage,
+      listFolders: (...a) => {
+        if (broken) throw new Error('storage broke');
+        return storage.listFolders(...a);
+      },
+    };
+    const rescan = createRescanService({ storage: spy, scan: runScan });
+    await expect(rescan.rescanCollection(id)).rejects.toThrow(/storage broke/);
+    broken = false;
+    const result = await rescan.rescanCollection(id);
+    expect(result.summary.rescanned.length).toBe(1);
   });
 });
 
