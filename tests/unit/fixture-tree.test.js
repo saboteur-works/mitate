@@ -39,6 +39,13 @@ describe('fixture tree builder', () => {
     }
   });
 
+  it('marks Day1/notes.txt supported (txt is a registered document type, FR-10)', () => {
+    const rel = 'Photos/2024/Trip/Day1/notes.txt';
+    expect(manifest.supportedFiles).toContain(rel);
+    expect(manifest.unsupportedFiles).not.toContain(rel);
+    expect(manifest.files.find((f) => f.rel === rel).supported).toBe(true);
+  });
+
   it('has an uppercase-extension file', () => {
     expect(fs.readdirSync(path.join(root, 'Photos'))).toContain('A.JPG');
   });

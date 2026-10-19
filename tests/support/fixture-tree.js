@@ -74,7 +74,7 @@ function populate(o) {
   o.file('Photos/2024/b.png', true);
   o.file('Photos/2024/Trip/c.heic', true);
   o.file('Photos/2024/Trip/Day1/deep.jpg', true); // supported, deep
-  o.file('Photos/2024/Trip/Day1/notes.txt', false);
+  o.file('Photos/2024/Trip/Day1/notes.txt', true);
   o.file('Music/Album/track01.flac', true);
   o.file('Docs/report.pdf', true);
   o.file('Docs/readme.md', false);

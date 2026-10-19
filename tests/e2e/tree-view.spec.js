@@ -148,12 +148,13 @@ test('fixture collection renders a tree mirroring the disk structure, folders be
     for (const p of order) indices.push(await rowIndex(window, p));
     expect(indices).toEqual([...indices].sort((a, b) => a - b));
 
-    // txt is a registered document type (FR-10), so discovery indexes notes.txt.
-    await expect(rowAt(window, `${root}/Photos/2024/Trip/Day1/notes.txt`)).toContainText('notes.txt');
-    await expect(rowAt(window, `${root}/Photos/2024/Trip/Day1/notes.txt`)).toHaveAttribute('data-type', 'file');
-    expect(await rowIndex(window, `${root}/Photos/2024/Trip/Day1/notes.txt`)).toBeGreaterThan(
-      await rowIndex(window, deep),
-    );
+    // Day1 holds a second supported file, named by the fixture manifest.
+    const notesRel = 'Photos/2024/Trip/Day1/notes.txt';
+    expect(fixture.manifest.supportedFiles).toContain(notesRel);
+    const notes = `${root}/${notesRel}`;
+    await expect(rowAt(window, notes)).toContainText(path.basename(notesRel));
+    await expect(rowAt(window, notes)).toHaveAttribute('data-type', 'file');
+    expect(await rowIndex(window, notes)).toBeGreaterThan(await rowIndex(window, deep));
 
     // Unsupported files are not part of the tree: expand Docs, where the supported
     // sibling report.pdf is present and the unsupported data.xyz is absent.

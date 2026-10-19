@@ -39,9 +39,6 @@ describe('discovery', () => {
     const expected = manifest.supportedFiles
       .filter((r) => !r.split('/').some((p) => p.startsWith('.')))
       .filter((r) => !/\.(app|photoslibrary)\//.test(r));
-    // The fixture marks Day1/notes.txt unsupported, but txt is a registry
-    // document extension (FR-10), so discovery correctly indexes it.
-    expected.push('Photos/2024/Trip/Day1/notes.txt');
     expect(rels().filter((r) => !r.startsWith('pk/'))).toEqual([...expected].sort());
   });
 
@@ -52,10 +49,9 @@ describe('discovery', () => {
   });
 
   it('does not index unsupported extensions', () => {
-    const notInRegistry = manifest.unsupportedFiles.filter((r) => !r.endsWith('.txt'));
-    expect(notInRegistry).toContain('Docs/readme.md');
-    expect(notInRegistry).toContain('Docs/data.xyz');
-    for (const r of notInRegistry) expect(rels()).not.toContain(r);
+    expect(manifest.unsupportedFiles).toContain('Docs/readme.md');
+    expect(manifest.unsupportedFiles).toContain('Docs/data.xyz');
+    for (const r of manifest.unsupportedFiles) expect(rels()).not.toContain(r);
   });
 
   it('skips dot-named files and folders with their contents', () => {
