@@ -247,7 +247,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 26
 **Estimate:** 1
 **Notes:** Covers FR-10 (txt is registered) and the fixture part of FR-17. Any other test that adds notes.txt by hand (for example the comment at tests/e2e/tree-view.spec.js:151) is updated to read the flag from the fixture instead.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 28: Startup tests for an older-format store and an unreadable store
 **What:** Add startup tests for store.json with an older `FORMAT_VERSION` and for a store.json that cannot be read because of permissions (mode 000), asserting the same behaviour as the corrupt and newer-format cases from Task 21: the error reporter is called with a message naming the file, startup resolves without throwing, and the file is unchanged.
@@ -256,7 +256,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 21
 **Estimate:** 2
 **Notes:** Covers FR-2, FR-18. These are tests of cases Task 21 did not cover; whether they pass on the current code is unknown until they run, so this task does not assume a fix is needed. If an older format is meant to be migrated rather than reported, that is a product decision: record it as an Open Question rather than choosing here. Expected behaviour per the request is the same error report with the file unchanged.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 29: Tests with a real unreadable collection folder
 **What:** Add tests that use a real fixture folder with mode 000 for create, load (startup) and rescan, asserting the folder is marked unavailable and nothing on disk changes, in place of stubbed unreadability.
@@ -265,7 +265,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 27
 **Estimate:** 3
 **Notes:** Covers FR-4, FR-17, FR-20. The snapshot cannot descend into the locked folder, so the locked folder's own mode and parent entry are asserted unchanged by `fs.statSync` on the folder itself. Tests that stub readability remain; these add the real-permission case. Depends on 27 because both edit the fixture and its consumers.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 30: Remove unused variables flagged by the TypeScript checker
 **What:** Remove the three unused variables: `id` at tests/unit/rescan.test.js:143, `require` at tests/unit/storage.test.js:7 and `e` at tests/unit/discovery.test.js:116.
@@ -274,7 +274,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 27, 29
 **Estimate:** 1
 **Notes:** No behaviour change; there is no failing-before test. Line numbers are as reported and may have moved after Tasks 27 and 29, so the variables are located by name. Depends on 27 and 29 because they edit the same test files.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 31: Replace `ipcMain._invokeHandlers` in e2e tests with a supported mechanism
 **What:** Stop the e2e tests reading the Electron-internal `ipcMain._invokeHandlers`. Expose the original handler through a supported, non-test-only seam in ipc.js (for example `registerIpc` returning, or the module exporting a lookup for, the handler it registered for each channel), and have the tests wrap it with `ipcMain.removeHandler(channel)` followed by `ipcMain.handle(channel, wrapper)` where the wrapper calls the captured original.
@@ -283,7 +283,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 27
 **Estimate:** 3
 **Notes:** Covers FR-1, FR-11 (test mechanism only). The seam must have a product reason independent of the tests (a handler lookup by channel), carry no test-only branch, and be documented in the ipc.js header. If Playwright's `electronApp.evaluate` cannot reach the seam through `require` of the module, record the failure output and report it rather than falling back to an internal API. Depends on 27 because both edit tree-view.spec.js.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 32: Move the rescan-delay test hook out of main.js
 **What:** Remove the `MEDIA_ORGANIZER_RESCAN_DELAY_MS` code from src/main/main.js and make the rescan e2e slow a rescan by wrapping the `collections:rescan` handler in the main process with the Task 31 mechanism (remove and re-register with a wrapper that waits before calling the original).
@@ -292,7 +292,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 20, 31
 **Estimate:** 2
 **Notes:** Covers FR-20 (test mechanism only). No test-only code remains in product files. The wrapper delays only the e2e's launched app instance and is installed from the test through `electronApp.evaluate`.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 33: Measurement: JSON store cost at 50k, 200k and 500k file records
 **What:** Add a measurement script that, for index sizes of 50,000, 200,000 and 500,000 file records, measures the storage module's load time, save time and one transaction (Task 26) commit time, and the size of store.json, with several runs per size, and records the results.
@@ -301,7 +301,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 26
 **Estimate:** 3
 **Notes:** Covers FR-18 (measurement; resolves the unmeasured risk named in Task 4). This is a measurement task, not product code. The document records only what was measured. It states no cause for any timing, and no conclusion such as "adequate" or "too slow". Each run uses a temporary storage location outside any collection folder, removed afterwards. Peak memory is recorded only if the script measures it.
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 34: Measurement: scan wall time and peak RSS
 **What:** Add a measurement script that runs discovery in the worker (Task 9) over (a) a generated tree of 200,000 files on the internal APFS volume and (b) a real directory tree that holds no user data and is read-only (for example `/System/Library`), and records wall time and peak resident set size for several runs of each.
@@ -310,13 +310,58 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Depends on:** 9
 **Estimate:** 3
 **Notes:** Covers FR-12 (measurement; input to the blocked product FR-20 targets, which this task does not set). This is a measurement task, not product code. Facts only: no cause, comparison to Finder or Bridge, or conclusion about adequacy. The /System/Library run is read-only and touches no user data; its file count is recorded because it may change across OS updates. If part of the tree is unreadable, the count of skipped directories is recorded.
-**Done:** [ ]
+**Done:** [x]
+
+### Task 35: Describe each data-file startup failure by what went wrong
+**What:** Make the startup error report for the data file say what actually went wrong for each case: invalid JSON, newer format, older format, unrecognized format, and permission denied.
+**Files:** src/main/startup.js, src/main/storage/index.js, tests/unit/startup.test.js
+**Done when:** `npx vitest run tests/unit/startup.test.js` exits 0 with 5 new assertions on the wording for the five cases, which failed against the old wording and now pass; the wording for 4 of the cases was also checked in the real app.
+**Depends on:** 28
+**Estimate:** 2
+**Notes:** Commit 19ca421. Covers FR-2, FR-18. Recorded after the work was done. Verified as stated: 5 new assertions failed against the old wording and all pass; 4 cases checked in the real app.
+**Done:** [x]
+
+### Task 36: Run e2e tests in the background without stealing focus
+**What:** Launch the e2e app instance without taking window focus from the user, through tests/support/background-main.js, with an opt-in `MO_E2E_VISIBLE=1` to show the window.
+**Files:** README.md, tests/support/background-main.js, tests/support/app-entry.js, tests/e2e/create-collection.spec.js, tests/e2e/full-flow.spec.js, tests/e2e/rescan.spec.js, tests/e2e/smoke.spec.js, tests/e2e/tree-view.spec.js
+**Done when:** Measured before and after by sampling the frontmost application: before, Electron was frontmost in 44 of 84 samples; after, the user's app was frontmost in 187 of 187 samples across 3 runs.
+**Depends on:** 32
+**Estimate:** 2
+**Notes:** Commit 00ead68. Covers FR-19. Recorded after the work was done. States the measurements only; no cause is asserted for the earlier focus stealing.
+**Done:** [x]
+
+### Task 37: Drop the deprecated process.mainModule fallback from the IPC wrap helper
+**What:** Remove the `process.mainModule` fallback in tests/support/ipc-wrap.js and rely on `process.getBuiltinModule`.
+**Files:** tests/support/ipc-wrap.js, tests/unit/ipc-wrap.test.js
+**Done when:** Measured: Electron 44.9.0 bundles Node 24.22.0, which provides `process.getBuiltinModule`; the helper no longer references `process.mainModule`.
+**Depends on:** 31
+**Estimate:** 1
+**Notes:** Commit b31a62d. Covers FR-19. Recorded after the work was done.
+**Done:** [x]
+
+### Task 38: Attach the folder picker to the app window even when it is not focused
+**What:** Open the folder picker against the main-window reference instead of `getFocusedWindow`, so it attaches to the app window when the window is unfocused.
+**Files:** src/main/main.js, tests/e2e/create-collection.spec.js
+**Done when:** A new e2e check failed with `getFocusedWindow` and passes with the main-window reference.
+**Depends on:** 36
+**Estimate:** 1
+**Notes:** Commit a411e5d. Covers FR-1. Recorded after the work was done.
+**Done:** [x]
+
+### Task 39: Cover folders macOS refuses with EPERM
+**What:** Add tests, with the EPERM refusal simulated, that document the current behaviour for a folder macOS refuses to read.
+**Files:** tests/unit/collection-service.test.js
+**Done when:** Tests pass showing that create rejects with an error naming EPERM, and that a folder refused after creation is unavailable on load and skipped by rescan.
+**Depends on:** 29
+**Estimate:** 1
+**Notes:** Commit 0603ea7. Covers FR-4, FR-20. Recorded after the work was done; the EPERM refusal is simulated, not produced by macOS. The tests document current behaviour. Whether creation should instead accept a refused folder and mark it unavailable is an open product question; it is not decided here.
+**Done:** [x]
 
 ## Summary
-- Total tasks: 34
-- Total estimated effort: 89 points
-- Critical path: 1 → 3 → 8 → 9 → 11 → 13 → 14 → 15 → 16 (tasks 1-16); review-fix chain after 15: 17 → 19 → 20 → 25 → 26; follow-ups after 26: 27 → 29 → 30, 27 → 31 → 32, 21 → 28, and measurements 33 (after 26) and 34 (after 9)
-- Risks: Task 1 (Electron binary download may fail in the sandbox; Playwright's Electron support with Electron 44 is unverified and blocks every e2e task, 13 to 16); Task 7 (external and network volumes need the user's hardware); Task 4 (JSON store scale is unmeasured); Task 14 (virtualized rendering bound is chosen by the implementer); Task 5 (ctime/birthtime/atime ordering is subtle); Tasks 17-26 are review fixes sequenced by shared files (17 first; the rest follow in dependency order; each task cites its review finding number, which differs from the task number); Tasks 27-34 are follow-ups, of which 33 and 34 produce measurements only and 28 may find behaviour that needs a product decision about migrating older store formats.
+- Total tasks: 39
+- Total estimated effort: 96 points
+- Critical path: 1 → 3 → 8 → 9 → 11 → 13 → 14 → 15 → 16 (tasks 1-16); review-fix chain after 15: 17 → 19 → 20 → 25 → 26; follow-ups after 26: 27 → 29 → 30, 27 → 31 → 32, 21 → 28, measurements 33 (after 26) and 34 (after 9), and done records 28 → 35, 32 → 36 → 38, 31 → 37, 29 → 39
+- Risks: Task 1 (Electron binary download may fail in the sandbox; Playwright's Electron support with Electron 44 is unverified and blocks every e2e task, 13 to 16); Task 7 (external and network volumes need the user's hardware); Task 4 (JSON store scale is unmeasured); Task 14 (virtualized rendering bound is chosen by the implementer); Task 5 (ctime/birthtime/atime ordering is subtle); Tasks 17-26 are review fixes sequenced by shared files (17 first; the rest follow in dependency order; each task cites its review finding number, which differs from the task number); Tasks 27-39 are follow-ups (35-39 recorded as already done), of which 33 and 34 produce measurements only and 28 may find behaviour that needs a product decision about migrating older store formats.
 
 ## Open Questions
-None.
+- When the user picks a folder that macOS refuses (EPERM), should creating the collection fail (current behaviour) or add the folder as unavailable? Impact: FR-1, FR-4. Owner: Product owner.
