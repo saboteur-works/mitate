@@ -6,27 +6,23 @@ const IPC_MODULE_PATH = path.join(__dirname, '..', '..', 'src', 'main', 'ipc.js'
 
 // Runs inside the Electron main process via electronApp.evaluate, so it is
 // serialised with Function.prototype.toString and must be self-contained.
-// `require` is not in scope there, so a require is obtained from supported Node
-// APIs: process.getBuiltinModule('module').createRequire(ipcPath) (Node >= 22.3),
-// else process.mainModule.require. Requiring ipc.js by absolute path through it
-// returns the SAME module instance main.js loaded (same resolved filename, so the
-// same module-cache entry), hence the registry getRegisteredHandler reads is the
-// one registerIpc filled.
+// `require` is not in scope there, so a require is obtained with
+// process.getBuiltinModule('module').createRequire(ipcPath) (Node >= 22.3;
+// measured 2026-10-19: Electron 44.9.0 bundles Node 24.22.0 and has it inside
+// electronApp.evaluate). Requiring ipc.js by absolute path through it returns
+// the SAME module instance main.js loaded (same resolved filename, so the same
+// module-cache entry), hence the registry getRegisteredHandler reads is the one
+// registerIpc filled.
 function installWrapperInMain({ ipcMain }, { ipcPath, channel: ch, source }) {
-  let req;
-  if (typeof process.getBuiltinModule === 'function') {
-    req = process.getBuiltinModule('module').createRequire(ipcPath);
-  } else if (process.mainModule && process.mainModule.require) {
-    req = process.mainModule.require.bind(process.mainModule);
-  } else {
+  if (typeof process.getBuiltinModule !== 'function') {
     throw new Error(
       'cannot obtain a require in the main process: ' +
         `typeof process.getBuiltinModule=${typeof process.getBuiltinModule}, ` +
-        `typeof process.mainModule=${typeof process.mainModule}, ` +
         `process.versions.node=${process.versions && process.versions.node}, ` +
         `process.versions.electron=${process.versions && process.versions.electron}`,
     );
   }
+  const req = process.getBuiltinModule('module').createRequire(ipcPath);
   const { getRegisteredHandler } = req(ipcPath);
   const original = getRegisteredHandler(ch);
   if (typeof original !== 'function') {

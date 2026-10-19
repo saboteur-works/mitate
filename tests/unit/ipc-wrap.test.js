@@ -52,6 +52,6 @@ describe('wrapHandler in-main code', () => {
     const m = inMainContext({ versions: { node: '0.0.0', electron: '9.9.9' } });
     expect(() =>
       m.run({ ipcPath: IPC_MODULE_PATH, channel: 'c', source: '() => 0' }),
-    ).toThrow(/getBuiltinModule.*mainModule.*0\.0\.0.*9\.9\.9/s);
+    ).toThrow(/getBuiltinModule.*0\.0\.0.*9\.9\.9/s);
   });
 });
