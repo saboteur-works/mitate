@@ -24,23 +24,9 @@
  * - An unknown collection id rejects.
  */
 
-const fs = require('node:fs');
-const { createCollectionService } = require('./service.js');
-
-function defaultScan(folderPath) {
-  return require('../discovery/run-scan.js').runScan(folderPath);
-}
-
-async function isReadableDirectory(dir) {
-  try {
-    const stat = await fs.promises.stat(dir);
-    if (!stat.isDirectory()) return false;
-    await fs.promises.access(dir, fs.constants.R_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
+// defaultScan and isReadableDirectory live in service.js (rescan.js already
+// imports it, so sharing from there adds no circular import).
+const { createCollectionService, defaultScan, isReadableDirectory } = require('./service.js');
 
 function createRescanService({ storage, scan = defaultScan } = {}) {
   if (!storage) throw new Error('storage is required');

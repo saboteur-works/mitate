@@ -177,4 +177,4 @@ function createCollectionService({ storage, scan = defaultScan, idGenerator = cr
   return { createCollection, loadCollections, getCollectionView };
 }
 
-module.exports = { createCollectionService };
+module.exports = { createCollectionService, defaultScan, isReadableDirectory };

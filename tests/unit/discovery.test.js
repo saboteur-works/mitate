@@ -5,7 +5,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tree.js');
-const { discover, discoverSync } = require('../../src/main/discovery/discover.js');
+const { discoverSync } = require('../../src/main/discovery/discover.js');
 const { PACKAGE_EXTENSIONS, isPackageName } = require('../../src/main/discovery/packages.js');
 const readonlyCheck = require('../../tools/readonly-check/index.js');
 
@@ -24,7 +24,7 @@ beforeAll(async () => {
   }
   fs.writeFileSync(path.join(root, 'pk', 'ok.jpg'), 'x');
   before = readonlyCheck.snapshot(root, { role: 'before' });
-  records = await discover(root);
+  records = discoverSync(root);
   after = readonlyCheck.snapshot(root, { role: 'after' });
 });
 
@@ -105,7 +105,7 @@ describe('discovery', () => {
     fs.rmSync(dir, { recursive: true });
   });
 
-  it('skips unreadable subdirectories and reports them via onError', async () => {
+  it('skips unreadable subdirectories and reports them via onError', () => {
     const dir = fs.mkdtempSync(path.join(root, 'unread-'));
     fs.mkdirSync(path.join(dir, 'locked'));
     fs.writeFileSync(path.join(dir, 'locked', 'h.jpg'), 'x');
@@ -113,7 +113,7 @@ describe('discovery', () => {
     fs.chmodSync(path.join(dir, 'locked'), 0o000);
     try {
       const errors = [];
-      const out = await discover(dir, { onError: (e, p) => errors.push(p) });
+      const out = discoverSync(dir, { onError: (e, p) => errors.push(p) });
       expect(out.map((r) => r.relativePath)).toEqual(['ok.jpg']);
       expect(errors).toEqual([path.join(dir, 'locked')]);
     } finally {
@@ -122,9 +122,15 @@ describe('discovery', () => {
     }
   });
 
-  it('throws for an unreadable or relative root', async () => {
-    await expect(discover(path.join(root, 'nope'))).rejects.toThrow();
+  it('throws for an unreadable or relative root', () => {
+    expect(() => discoverSync(path.join(root, 'nope'))).toThrow();
     expect(() => discoverSync('relative/dir')).toThrow(TypeError);
+  });
+
+  it('exports discoverSync only (no unused async discover walk)', () => {
+    const exported = require('../../src/main/discovery/discover.js');
+    expect(exported).not.toHaveProperty('discover');
+    expect(typeof exported.discoverSync).toBe('function');
   });
 
   it('leaves the scanned tree unchanged (read-only check)', () => {

@@ -3,7 +3,6 @@
 /*
  * Discovery (FR-5..FR-8). Read-only walk of a folder at any depth.
  *
- *   discover(folderPath, options?)      -> Promise<FileRecord[]>
  *   discoverSync(folderPath, options?)  -> FileRecord[]
  *
  * options.onError(err, path): called for each subdirectory that cannot be
@@ -58,7 +57,7 @@ function byRelativePath(a, b) {
 
 function resolveRoot(folderPath) {
   if (typeof folderPath !== 'string' || !path.isAbsolute(folderPath)) {
-    throw new TypeError('discover: folderPath must be an absolute path');
+    throw new TypeError('discoverSync: folderPath must be an absolute path');
   }
   return path.resolve(folderPath);
 }
@@ -88,29 +87,4 @@ function discoverSync(folderPath, options = {}) {
   return records.sort(byRelativePath);
 }
 
-async function discover(folderPath, options = {}) {
-  const root = resolveRoot(folderPath);
-  const records = [];
-  const walk = async (dir, rel, isRoot) => {
-    let entries;
-    try {
-      entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    } catch (err) {
-      if (isRoot) throw err;
-      if (options.onError) options.onError(err, dir);
-      return;
-    }
-    for (const entry of entries) {
-      const kind = classify(entry);
-      if (!kind) continue;
-      const abs = path.join(dir, entry.name);
-      const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
-      if (kind === 'dir') await walk(abs, entryRel, false);
-      else records.push(makeRecord(abs, entryRel, entry.name));
-    }
-  };
-  await walk(root, '', true);
-  return records.sort(byRelativePath);
-}
-
-module.exports = { discover, discoverSync };
+module.exports = { discoverSync };
