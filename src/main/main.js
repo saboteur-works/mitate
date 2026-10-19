@@ -3,6 +3,7 @@
 const path = require('node:path');
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const { openStorage } = require('./storage/index.js');
+const { startStorage } = require('./startup.js');
 const { createCollectionService } = require('./collections/service.js');
 const { createRescanService } = require('./collections/rescan.js');
 const { registerIpc } = require('./ipc.js');
@@ -21,8 +22,17 @@ function createWindow() {
   return win;
 }
 
-app.whenReady().then(() => {
-  const storage = openStorage({ location: { baseDir: app.getPath('userData') } });
+app.whenReady().then(async () => {
+  const started = await startStorage({
+    baseDir: app.getPath('userData'),
+    openStorage,
+    reportError: (message) => dialog.showErrorBox('Cannot open data file', message),
+  });
+  if (!started.ok) {
+    app.quit();
+    return;
+  }
+  const storage = started.storage;
   const service = createCollectionService({ storage });
   const rescanService = createRescanService({ storage });
   registerIpc({ ipcMain, dialog, service, rescanService, getWindow: () => BrowserWindow.getFocusedWindow() });
