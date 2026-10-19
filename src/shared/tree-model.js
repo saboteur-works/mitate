@@ -34,8 +34,17 @@
  *                              // (subfolders); file: true when its folder is unavailable
  *     children?: Node[],       // folders only: subfolders first, then files
  *     kind?: string,           // files only: copied from the file record
- *     id?: string              // roots only: the folder record id
+ *     id: string,              // node identity, unique per root (see "Node identity")
+ *     folderId: string         // id of the root folder record this node belongs to
  *   }
+ *
+ * Node identity: `path` is NOT an identity, because roots may overlap (roots
+ * /a and /a/b are both kept), so the root /a/b and the subfolder b under root
+ * /a have the same absolute path. Every node therefore has an `id` built as
+ * `<rootFolderId>:<relativePath>` (the root's folder record id, a colon, and
+ * the node's relativePath; a root has relativePath '' so its id is
+ * `<rootFolderId>:`). Ids are distinct across the whole tree. Expansion state,
+ * row keys and lookups must use `id`; `path` is for display only.
  *
  * Root folders (user decision, overrides the literal FR-11 wording): every
  * top-level (added) folder of the collection is ALWAYS in the tree, whether or
@@ -85,8 +94,21 @@ function baseName(p) {
   return i >= 0 ? trimmed.slice(i + 1) : trimmed;
 }
 
-function makeFolder(name, path, relativePath, unavailable) {
-  return { type: 'folder', name, path, relativePath, unavailable, children: [] };
+function nodeId(folderId, relativePath) {
+  return folderId + ':' + relativePath;
+}
+
+function makeFolder(folderId, name, path, relativePath, unavailable) {
+  return {
+    type: 'folder',
+    id: nodeId(folderId, relativePath),
+    folderId,
+    name,
+    path,
+    relativePath,
+    unavailable,
+    children: [],
+  };
 }
 
 function sortChildren(folder) {
@@ -108,17 +130,20 @@ function addFile(root, rec, byRel) {
     relSoFar = relSoFar ? relSoFar + '/' + parts[i] : parts[i];
     let dir = byRel.get(relSoFar);
     if (!dir) {
-      dir = makeFolder(parts[i], root.path + '/' + relSoFar, relSoFar, root.unavailable);
+      dir = makeFolder(root.folderId, parts[i], root.path + '/' + relSoFar, relSoFar, root.unavailable);
       byRel.set(relSoFar, dir);
       parent.children.push(dir);
     }
     parent = dir;
   }
+  const fileRel = parts.join('/');
   parent.children.push({
     type: 'file',
+    id: nodeId(root.folderId, fileRel),
+    folderId: root.folderId,
     name: rec.name !== undefined ? rec.name : parts[parts.length - 1],
     path: rec.path,
-    relativePath: parts.join('/'),
+    relativePath: fileRel,
     unavailable: root.unavailable || rec.unavailable === true,
     kind: rec.kind,
   });
@@ -128,8 +153,7 @@ function addFile(root, rec, byRel) {
 function buildTree(folderRecords, fileRecords) {
   const roots = new Map();
   for (const f of folderRecords || []) {
-    const root = makeFolder(baseName(f.path), f.path, '', f.unavailable === true);
-    root.id = f.id;
+    const root = makeFolder(f.id, baseName(f.path), f.path, '', f.unavailable === true);
     roots.set(f.id, { root, byRel: new Map() });
   }
   for (const rec of fileRecords || []) {
@@ -146,7 +170,7 @@ function buildTree(folderRecords, fileRecords) {
 }
 
 // Ordered visible rows. `tree` is the root-node array from buildTree;
-// `expandedSet` is a Set of folder node paths that are expanded. Children of a
+// `expandedSet` is a Set of folder node ids that are expanded. Children of a
 // folder are included only when the folder is expanded; collapsed folders and
 // their descendants are not visited, so cost follows what is visible.
 function flattenVisible(tree, expandedSet) {
@@ -158,7 +182,7 @@ function flattenVisible(tree, expandedSet) {
     const row = stack.pop();
     rows.push(row);
     const { node, depth } = row;
-    if (node.type === 'folder' && expanded.has(node.path)) {
+    if (node.type === 'folder' && expanded.has(node.id)) {
       for (let i = node.children.length - 1; i >= 0; i--) {
         stack.push({ node: node.children[i], depth: depth + 1 });
       }

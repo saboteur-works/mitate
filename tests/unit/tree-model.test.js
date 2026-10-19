@@ -63,7 +63,7 @@ describe('buildTree', () => {
     const tree = buildTree(f, files);
     expect(tree.map((n) => n.name)).toEqual(['empty', 'r']);
     expect(tree[0]).toMatchObject({ type: 'folder', unavailable: false, children: [], relativePath: '' });
-    expect(tree[0].id).toBe('empty');
+    expect(tree[0].id).toBe('empty:');
   });
 
   it('shows an unavailable root with no stored files, flagged unavailable', () => {
@@ -149,21 +149,64 @@ describe('flattenVisible', () => {
   });
 
   it('shows one level when only the root is expanded', () => {
-    expect(rows(new Set(['/r']))).toEqual(['0:r', '1:d1', '1:d2', '1:top.jpg']);
+    expect(rows(new Set(['a:']))).toEqual(['0:r', '1:d1', '1:d2', '1:top.jpg']);
   });
 
   it('expands nested folders in order with depth', () => {
-    expect(rows(new Set(['/r', '/r/d1']))).toEqual([
+    expect(rows(new Set(['a:', 'a:d1']))).toEqual([
       '0:r', '1:d1', '2:inner', '2:x.jpg', '1:d2', '1:top.jpg',
     ]);
   });
 
   it('does not show descendants of a collapsed folder even if they are marked expanded', () => {
-    expect(rows(new Set(['/r/d1']))).toEqual(['0:r']);
+    expect(rows(new Set(['a:d1']))).toEqual(['0:r']);
   });
 
   it('returns node objects from the tree', () => {
-    const r = flattenVisible(tree, new Set(['/r']));
+    const r = flattenVisible(tree, new Set(['a:']));
     expect(r[0].node).toBe(tree[0]);
+  });
+});
+
+describe('node ids with overlapping roots', () => {
+  // Roots /a and /a/b: the subfolder b under /a and the root /a/b share the path /a/b.
+  const folders = [folder('fa', '/a'), folder('fb', '/a/b')];
+  const files = [file('fa', '/a', 'b/x.jpg'), file('fb', '/a/b', 'y.jpg')];
+  const tree = buildTree(folders, files);
+
+  const walk = (nodes, out = []) => {
+    for (const n of nodes) {
+      out.push(n);
+      if (n.children) walk(n.children, out);
+    }
+    return out;
+  };
+
+  it('gives every node an id, all distinct, including the two nodes with path /a/b', () => {
+    const all = walk(tree);
+    const ids = all.map((n) => n.id);
+    expect(ids.every((id) => typeof id === 'string' && id.length > 0)).toBe(true);
+    expect(new Set(ids).size).toBe(ids.length);
+    const clash = all.filter((n) => n.type === 'folder' && n.path === '/a/b');
+    expect(clash).toHaveLength(2);
+    expect(clash[0].id).not.toBe(clash[1].id);
+  });
+
+  it('uses <root folder id>:<relative path>', () => {
+    const rootA = tree.find((n) => n.path === '/a');
+    expect(rootA.id).toBe('fa:');
+    expect(rootA.children[0].id).toBe('fa:b');
+    expect(rootA.children[0].children[0].id).toBe('fa:b/x.jpg');
+  });
+
+  it('expands only the node whose id is in the expanded set', () => {
+    const rootA = tree.find((n) => n.path === '/a');
+    const rootB = tree.find((n) => n.path === '/a/b');
+    const subB = rootA.children[0];
+    const ids = (set) => flattenVisible(tree, set).map((r) => r.node.id);
+    // Only the root /a/b expanded: its file shows, the subfolder under /a stays collapsed.
+    expect(ids(new Set([rootB.id]))).toEqual(['fa:', 'fb:', 'fb:y.jpg']);
+    // Root /a and subfolder b under it expanded: root /a/b stays collapsed.
+    expect(ids(new Set([rootA.id, subB.id]))).toEqual(['fa:', 'fa:b', 'fa:b/x.jpg', 'fb:']);
   });
 });

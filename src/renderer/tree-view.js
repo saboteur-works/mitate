@@ -11,6 +11,9 @@
  * therefore depends on the viewport height, not on the number of files.
  *
  * Decisions:
+ * - Node identity is node.id (unique per root, see tree-model.js): expansion state
+ *   and the data-node-id attribute use it. data-path (absolute path) is display only
+ *   and can be shared by rows of overlapping roots.
  * - Root folders start COLLAPSED; click a folder row to expand or collapse it.
  *   (Rows are only materialized for visible entries, so expanding a root with
  *   tens of thousands of files is still cheap in the DOM.)
@@ -47,20 +50,21 @@
     row.dataset.testid = 'tree-row';
     row.dataset.type = node.type;
     row.dataset.index = String(index);
+    row.dataset.nodeId = node.id;
     row.dataset.path = node.path;
     row.setAttribute('role', 'treeitem');
     row.style.top = index * ROW_HEIGHT + 'px';
     row.style.paddingLeft = depth * INDENT + 4 + 'px';
     if (isFolder) {
-      const open = expanded.has(node.path);
+      const open = expanded.has(node.id);
       row.dataset.expanded = String(open);
       row.setAttribute('aria-expanded', String(open));
-      row.addEventListener('click', () => toggle(node.path));
+      row.addEventListener('click', () => toggle(node.id));
     }
     const name = document.createElement('span');
     name.className = 'tree-name';
     name.dataset.testid = 'tree-name';
-    name.textContent = (isFolder ? (expanded.has(node.path) ? '▾ ' : '▸ ') : '') + node.name;
+    name.textContent = (isFolder ? (expanded.has(node.id) ? '▾ ' : '▸ ') : '') + node.name;
     row.appendChild(name);
     if (node.unavailable) {
       const label = document.createElement('span');
@@ -93,9 +97,9 @@
     renderWindow();
   }
 
-  function toggle(path) {
-    if (expanded.has(path)) expanded.delete(path);
-    else expanded.add(path);
+  function toggle(id) {
+    if (expanded.has(id)) expanded.delete(id);
+    else expanded.add(id);
     relayout();
   }
 

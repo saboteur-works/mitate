@@ -295,6 +295,72 @@ test('unavailable folders keep their files, marked unavailable; unavailable empt
   }
 });
 
+// Overlapping roots <tmp>/a and <tmp>/a/b are both kept. The root <tmp>/a/b and the
+// subfolder b under root <tmp>/a share data-path, so rows are addressed by data-node-id
+// (<rootFolderId>:<relativePath>) and expansion state must be independent.
+test('overlapping roots: the root /a/b and the subfolder b under root /a expand independently', async () => {
+  const userDataDir = newUserDataDir();
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'mo-tree-overlap-'));
+  const rootA = path.join(base, 'a');
+  const rootB = path.join(base, 'a', 'b');
+  fs.mkdirSync(rootB, { recursive: true });
+  let session;
+  try {
+    seedCollection(userDataDir, 'Overlap', [
+      { id: 'f-a', path: rootA, unavailable: false, files: ['b/inA.jpg'] },
+      { id: 'f-b', path: rootB, unavailable: false, files: ['inB.jpg'] },
+    ]);
+
+    session = await launch(userDataDir);
+    const { window } = session;
+    await selectFirstCollection(window);
+
+    const byId = (id) => window.locator(`[data-testid="tree-row"][data-node-id="${id}"]`);
+    const idRootA = 'f-a:';
+    const idRootB = 'f-b:';
+    const idSubB = 'f-a:b';
+
+    // Both roots render, with distinct node ids, and they share no expansion.
+    await expect(window.getByTestId('tree-row')).toHaveCount(2);
+    await expect(byId(idRootA)).toHaveCount(1);
+    await expect(byId(idRootB)).toHaveCount(1);
+    await expect(byId(idRootA)).toHaveAttribute('data-path', rootA);
+    await expect(byId(idRootB)).toHaveAttribute('data-path', rootB);
+    await expect(byId(idRootA)).toHaveAttribute('data-expanded', 'false');
+    await expect(byId(idRootB)).toHaveAttribute('data-expanded', 'false');
+
+    // Expanding the root /a/b shows its own file and leaves root /a collapsed.
+    await byId(idRootB).click();
+    await expect(byId(idRootB)).toHaveAttribute('data-expanded', 'true');
+    await expect(byId('f-b:inB.jpg')).toHaveCount(1);
+    await expect(byId(idRootA)).toHaveAttribute('data-expanded', 'false');
+    await expect(byId(idSubB)).toHaveCount(0);
+
+    // Expanding root /a shows the subfolder b (same path as root /a/b), still collapsed.
+    await byId(idRootA).click();
+    await expect(byId(idRootA)).toHaveAttribute('data-expanded', 'true');
+    await expect(byId(idSubB)).toHaveCount(1);
+    await expect(byId(idSubB)).toHaveAttribute('data-path', rootB);
+    await expect(byId(idSubB)).toHaveAttribute('data-expanded', 'false');
+    await expect(byId(idRootB)).toHaveAttribute('data-expanded', 'true');
+    await expect(byId('f-a:b/inA.jpg')).toHaveCount(0);
+
+    // Expanding the subfolder shows root a's file; collapsing the root /a/b leaves it expanded.
+    await byId(idSubB).click();
+    await expect(byId(idSubB)).toHaveAttribute('data-expanded', 'true');
+    await expect(byId('f-a:b/inA.jpg')).toHaveCount(1);
+    await byId(idRootB).click();
+    await expect(byId(idRootB)).toHaveAttribute('data-expanded', 'false');
+    await expect(byId('f-b:inB.jpg')).toHaveCount(0);
+    await expect(byId(idSubB)).toHaveAttribute('data-expanded', 'true');
+    await expect(byId('f-a:b/inA.jpg')).toHaveCount(1);
+  } finally {
+    if (session) await session.app.close();
+    fs.rmSync(base, { recursive: true, force: true });
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  }
+});
+
 // The late response is produced in the main process: the getView handler is wrapped
 // through ipcMain._invokeHandlers (Electron internal channel -> handler Map; the test
 // fails loudly if absent, as in create-collection.spec.js) so each collection's reply
