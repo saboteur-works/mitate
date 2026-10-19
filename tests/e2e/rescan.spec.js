@@ -15,15 +15,15 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { test, expect, _electron: electron } = require('@playwright/test');
+const { wrapHandler } = require('../support/ipc-wrap.js');
 const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tree.js');
 const { openStorage } = require('../../src/main/storage/index.js');
 const { createCollectionService } = require('../../src/main/collections/service.js');
 
-async function launch(userDataDir, env = {}) {
+async function launch(userDataDir) {
   const app = await electron.launch({
     args: ['.', `--user-data-dir=${userDataDir}`],
     cwd: path.join(__dirname, '..', '..'),
-    env: { ...process.env, ...env },
   });
   const window = await app.firstWindow();
   await window.waitForLoadState('domcontentloaded');
@@ -103,9 +103,10 @@ test('rescan is user-triggered, picks up added and removed files, and relaunch s
   }
 });
 
-// Slowness comes from MEDIA_ORGANIZER_RESCAN_DELAY_MS (test-only hook in
-// src/main/main.js): every scan call in a rescan waits that long. The preload
-// object is a frozen contextBridge object, so the renderer API is not wrapped.
+// The rescan is held in flight by wrapping the main-process 'collections:rescan' handler
+// (tests/support/ipc-wrap.js) with a gate the test releases; no production code carries a
+// test hook. The preload object is a frozen contextBridge object, so the renderer API is
+// not wrapped. The wrapper is installed after the window has loaded (IPC is registered).
 test('Rescan stays disabled for a collection whose rescan is running, even after selecting another collection and back', async () => {
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-organizer-rescan-busy-e2e-'));
   const fixture = buildFixtureTree();
@@ -118,8 +119,17 @@ test('Rescan stays disabled for a collection whose rescan is running, even after
     await service.createCollection('Alpha', [fixture.root]);
     await service.createCollection('Beta', [other]);
 
-    session = await launch(userDataDir, { MEDIA_ORGANIZER_RESCAN_DELAY_MS: '3000' });
-    const { window } = session;
+    session = await launch(userDataDir);
+    const { app, window } = session;
+    await wrapHandler(app, 'collections:rescan', (original) => {
+      let release;
+      const gate = new Promise((resolve) => { release = resolve; });
+      globalThis.__releaseRescan = release;
+      return async (event, ...args) => {
+        await gate;
+        return original(event, ...args);
+      };
+    });
     const items = window.getByTestId('collection-item');
     const alpha = items.filter({ hasText: 'Alpha' });
     const beta = items.filter({ hasText: 'Beta' });
@@ -144,6 +154,7 @@ test('Rescan stays disabled for a collection whose rescan is running, even after
     await expect(window.getByTestId('rescan-status')).toHaveText('Rescanning...');
 
     // It re-enables only once the rescan has finished.
+    await app.evaluate(() => globalThis.__releaseRescan());
     await expect(window.getByTestId('rescan-status')).toContainText('Rescanned 1 folders', { timeout: 30000 });
     await expect(rescan).toBeEnabled();
   } finally {
