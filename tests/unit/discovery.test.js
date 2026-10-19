@@ -109,7 +109,7 @@ describe('discovery', () => {
     fs.chmodSync(path.join(dir, 'locked'), 0o000);
     try {
       const errors = [];
-      const out = discoverSync(dir, { onError: (e, p) => errors.push(p) });
+      const out = discoverSync(dir, { onError: (_e, p) => errors.push(p) });
       expect(out.map((r) => r.relativePath)).toEqual(['ok.jpg']);
       expect(errors).toEqual([path.join(dir, 'locked')]);
     } finally {

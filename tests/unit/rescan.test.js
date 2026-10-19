@@ -140,7 +140,6 @@ describe('rescanCollection', () => {
     const dir = fs.mkdtempSync(path.join(work, 'removed-'));
     fs.writeFileSync(path.join(dir, 'one.jpg'), 'x');
     const created = await create([dir]);
-    const id = created.folders[0].id;
     const calls = [];
     const spy = {
       ...storage,
