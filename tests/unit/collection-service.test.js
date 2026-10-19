@@ -8,6 +8,7 @@ const require = createRequire(import.meta.url);
 const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tree.js');
 const { openStorage } = require('../../src/main/storage/index.js');
 const { createCollectionService } = require('../../src/main/collections/service.js');
+const { registerIpc, CHANNELS } = require('../../src/main/ipc.js');
 const { runScan } = require('../../src/main/discovery/run-scan.js');
 const readonly = require('../../tools/readonly-check/index.js');
 
@@ -174,6 +175,78 @@ describe('persistence and load', () => {
     const created = await s.createCollection('x', [dir]);
     expect(created.folders[0].unavailable).toBe(true);
     expect(created.files).toEqual([]);
+  });
+});
+
+// Returns the paths of every object in the payload that looks like a file record.
+function findFileRecords(value, where = '$') {
+  if (Array.isArray(value)) return value.flatMap((v, i) => findFileRecords(v, `${where}[${i}]`));
+  if (value === null || typeof value !== 'object') return [];
+  const here = 'extension' in value || 'relativePath' in value ? [where] : [];
+  return here.concat(Object.entries(value).flatMap(([k, v]) => findFileRecords(v, `${where}.${k}`)));
+}
+
+describe('collection list payload (summaries only)', () => {
+  async function listPayload(s) {
+    const handlers = new Map();
+    registerIpc({ ipcMain: { handle: (c, fn) => handlers.set(c, fn) }, dialog: {}, service: s });
+    return handlers.get(CHANNELS.listCollections)({});
+  }
+
+  it('carries name, id, folder count and per-folder unavailable, with no file records', async () => {
+    const gone = path.join(work, 'gone');
+    fs.mkdirSync(gone);
+    const created = await service(runScan).createCollection('Mixed', [gone, fixture.root]);
+    expect(created.files.length).toBeGreaterThan(0);
+    fs.rmSync(gone, { recursive: true });
+
+    const payload = await listPayload(service(throwingScan));
+    expect(payload.ok).toBe(true);
+    expect(findFileRecords(payload)).toEqual([]);
+
+    const [summary] = payload.summaries;
+    expect(summary.id).toBe(created.collection.id);
+    expect(summary.name).toBe('Mixed');
+    expect(summary.folderCount).toBe(2);
+    expect(summary.folders.map((f) => [f.path, f.unavailable])).toEqual([
+      [gone, true],
+      [fixture.root, false],
+    ]);
+    expect(summary.folders.every((f) => typeof f.id === 'string')).toBe(true);
+  });
+
+  it('listCollectionSummaries persists unavailable flags without reading the index', async () => {
+    const dir = path.join(work, 'vanish');
+    fs.mkdirSync(dir);
+    await service().createCollection('x', [dir]);
+    fs.rmdirSync(dir);
+    const storage = openStorage({ location: { file: storageFile } });
+    storage.getIndex = () => {
+      throw new Error('index must not be read');
+    };
+    const [summary] = await createCollectionService({ storage, scan: throwingScan }).listCollectionSummaries();
+    expect(summary.folders[0].unavailable).toBe(true);
+    expect(openStorage({ location: { file: storageFile } }).getFolder(summary.folders[0].id).unavailable).toBe(true);
+  });
+});
+
+describe('collection view from per-folder lookups', () => {
+  it('returns every folder file in folder order, then index order', async () => {
+    const rec = (dir, name) => ({
+      path: path.join(dir, name), relativePath: name, name, extension: name.split('.')[1], kind: 'image',
+    });
+    const dirA = path.join(work, 'a');
+    const dirB = path.join(work, 'b');
+    const dirC = path.join(work, 'c');
+    for (const d of [dirA, dirB, dirC]) fs.mkdirSync(d);
+    const byDir = { [dirA]: [rec(dirA, 'z.jpg'), rec(dirA, 'a.png')], [dirB]: [], [dirC]: [rec(dirC, 'm.gif')] };
+    const s = service(async (dir) => byDir[dir]);
+    const created = await s.createCollection('multi', [dirA, dirB, dirC]);
+    const expected = ['z.jpg', 'a.png', 'm.gif'];
+    expect(created.files.map((f) => f.name)).toEqual(expected);
+    expect(s.getCollectionView(created.collection.id).files.map((f) => f.name)).toEqual(expected);
+    const [fa, , fc] = created.folders;
+    expect(created.files.map((f) => f.folderId)).toEqual([fa.id, fa.id, fc.id]);
   });
 });
 

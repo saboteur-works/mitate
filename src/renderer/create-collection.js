@@ -27,21 +27,21 @@
     );
   }
 
-  function renderCollections(views) {
+  function renderCollections(summaries) {
     collectionList.replaceChildren(
-      ...views.map(({ collection, folders: folderRecords }) => {
+      ...summaries.map(({ id, name: collectionName, folderCount }) => {
         const li = document.createElement('li');
         li.dataset.testid = 'collection-item';
-        li.dataset.collectionId = collection.id;
-        li.classList.toggle('collection-selected', collection.id === selectedCollectionId);
+        li.dataset.collectionId = id;
+        li.classList.toggle('collection-selected', id === selectedCollectionId);
         const name = document.createElement('span');
         name.dataset.testid = 'collection-name-label';
-        name.textContent = collection.name;
+        name.textContent = collectionName;
         const count = document.createElement('span');
         count.dataset.testid = 'collection-folder-count';
-        count.textContent = String(folderRecords.length);
+        count.textContent = String(folderCount);
         li.append(name, ' (', count, ' folders)');
-        li.addEventListener('click', () => selectCollection(collection.id));
+        li.addEventListener('click', () => selectCollection(id));
         return li;
       }),
     );
@@ -73,7 +73,7 @@
   async function refreshCollections() {
     const result = await api.listCollections();
     if (!result.ok) return showError(result.error);
-    renderCollections(result.views);
+    renderCollections(result.summaries);
   }
 
   addButton.addEventListener('click', async () => {

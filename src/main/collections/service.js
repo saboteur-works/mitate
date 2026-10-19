@@ -13,7 +13,11 @@
  *
  *   createCollection(name, directories) -> Promise<{collection, folders, files}>
  *   loadCollections()                   -> Promise<Array<{collection, folders, files}>>
+ *   listCollectionSummaries()           -> Promise<Array<{id, name, folderCount,
+ *                                          folders: [{id, path, unavailable}]}>>
+ *                                          (no file records; index not read)
  *   getCollectionView(collectionId)     -> {collection, folders, files} | null
+ *                                          (files read per folder, in folder order)
  *
  * Decisions:
  * - Validation happens before anything is scanned or stored: name must be
@@ -100,11 +104,11 @@ function createCollectionService({ storage, scan = defaultScan, idGenerator = cr
 
   function view(collection) {
     const folders = storage.listFolders(collection.id);
-    const down = new Set(folders.filter((f) => f.unavailable).map((f) => f.id));
-    const files = storage.getIndex({ collectionId: collection.id }).map((f) => {
-      const { unavailable, ...rest } = f;
-      return down.has(f.folderId) ? { ...rest, unavailable: true } : rest;
-    });
+    const files = folders.flatMap((folder) =>
+      storage.getIndex({ folderId: folder.id }).map((f) => {
+        const { unavailable, ...rest } = f;
+        return folder.unavailable ? { ...rest, unavailable: true } : rest;
+      }));
     return { collection, folders, files };
   }
 
@@ -171,12 +175,28 @@ function createCollectionService({ storage, scan = defaultScan, idGenerator = cr
     return result;
   }
 
+  // Summaries for the collection list: no file records, and the index is not
+  // read. Runs the same accessibility check as loadCollections.
+  async function listCollectionSummaries() {
+    const result = [];
+    for (const collection of storage.listCollections()) {
+      await refreshAccessibility(collection.id);
+      const folders = storage.listFolders(collection.id).map(({ id, path: folderPath, unavailable }) => ({
+        id,
+        path: folderPath,
+        unavailable,
+      }));
+      result.push({ id: collection.id, name: collection.name, folderCount: folders.length, folders });
+    }
+    return result;
+  }
+
   function getCollectionView(collectionId) {
     const collection = storage.getCollection(collectionId);
     return collection ? view(collection) : null;
   }
 
-  return { createCollection, loadCollections, getCollectionView };
+  return { createCollection, loadCollections, listCollectionSummaries, getCollectionView };
 }
 
 module.exports = { createCollectionService, defaultScan, isReadableDirectory };

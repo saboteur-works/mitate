@@ -16,7 +16,7 @@ function setup({ dialogResult = { canceled: false, filePaths: ['/a', '/b'] }, se
   };
   const svc = service || {
     createCollection: async (name, dirs) => ({ collection: { name }, folders: dirs.map((d) => ({ path: d })), files: [] }),
-    loadCollections: async () => [],
+    listCollectionSummaries: async () => [],
   };
   registerIpc({ ipcMain, dialog, service: svc, rescanService });
   return { invoke: (ch, ...a) => handlers.get(ch)({}, ...a), calls };
@@ -42,7 +42,7 @@ describe('registerIpc', () => {
     const created = await invoke(CHANNELS.createCollection, 'N', ['/a']);
     expect(created.ok).toBe(true);
     expect(created.view.collection.name).toBe('N');
-    expect(await invoke(CHANNELS.listCollections)).toEqual({ ok: true, views: [] });
+    expect(await invoke(CHANNELS.listCollections)).toEqual({ ok: true, summaries: [] });
   });
 
   it('returns a collection view by id, or an error when unknown', async () => {
@@ -56,7 +56,7 @@ describe('registerIpc', () => {
   it('returns service errors as { ok: false, error }', async () => {
     const service = {
       createCollection: async () => { throw new Error('bad name'); },
-      loadCollections: async () => { throw new Error('boom'); },
+      listCollectionSummaries: async () => { throw new Error('boom'); },
     };
     const { invoke } = setup({ service });
     expect(await invoke(CHANNELS.createCollection, '', [])).toEqual({ ok: false, error: 'bad name' });

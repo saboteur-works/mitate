@@ -67,7 +67,7 @@ test('Create is disabled while a collection is being created; double-click creat
     // The store agrees: exactly one collection exists.
     const listed = await window.evaluate(() => window.mediaOrganizer.listCollections());
     expect(listed.ok).toBe(true);
-    expect(listed.views).toHaveLength(1);
+    expect(listed.summaries).toHaveLength(1);
   } finally {
     await app.close();
     cleanupFixtureTree(tree.root);

@@ -7,7 +7,9 @@
  *   folders:pick        -> { canceled, paths }   native folder picker; directories
  *                          only (openDirectory + multiSelections, never openFile)
  *   collections:create  (name, directories) -> { ok: true, view } | { ok: false, error }
- *   collections:list    -> { ok: true, views } | { ok: false, error }
+ *   collections:list    -> { ok: true, summaries } | { ok: false, error }
+ *                          summaries = [{ id, name, folderCount,
+ *                          folders: [{ id, path, unavailable }] }]; no file records
  *   collections:getView (collectionId) -> { ok: true, view } | { ok: false, error }
  *                          view = { collection, folders, files }; file records of
  *                          unavailable folders carry unavailable: true. Reads the
@@ -56,7 +58,7 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, getWindow
     guard(async () => ({ view: await service.createCollection(name, directories) })));
 
   ipcMain.handle(CHANNELS.listCollections, () =>
-    guard(async () => ({ views: await service.loadCollections() })));
+    guard(async () => ({ summaries: await service.listCollectionSummaries() })));
 
   ipcMain.handle(CHANNELS.getCollectionView, (_event, collectionId) =>
     guard(async () => {

@@ -33,6 +33,22 @@ function populate(store, collectionFolder) {
   store.setFolderAccess('f1', { kind: 'plain-path' });
 }
 
+describe('getIndex({ folderId })', () => {
+  it('returns only that folder records', () => {
+    const store = openStorage({ location: { file: file(dir) } });
+    store.putCollection({ id: 'c1', name: 'C', folderIds: ['f1', 'f2', 'f3'], createdAt: '2026-10-18T00:00:00.000Z' });
+    const rec = (d, n) => ({ path: `/${d}/${n}`, relativePath: n, name: n, extension: 'jpg', kind: 'image' });
+    for (const id of ['f1', 'f2', 'f3']) store.putFolder({ id, collectionId: 'c1', path: `/${id}` });
+    store.replaceFolderIndex('f1', [rec('f1', 'one.jpg'), rec('f1', 'two.jpg')]);
+    store.replaceFolderIndex('f2', [rec('f2', 'three.jpg')]);
+    expect(store.getIndex({ folderId: 'f1' }).map((r) => r.name)).toEqual(['one.jpg', 'two.jpg']);
+    expect(store.getIndex({ folderId: 'f2' }).map((r) => r.name)).toEqual(['three.jpg']);
+    expect(store.getIndex({ folderId: 'f3' })).toEqual([]);
+    expect(store.getIndex({ folderId: 'nope' })).toEqual([]);
+    expect(store.getIndex({ folderId: 'f1' }).every((r) => r.folderId === 'f1')).toBe(true);
+  });
+});
+
 describe('storage persistence', () => {
   it('returns the same collections, folders, index and access after reopening', () => {
     const f = file(dir);
