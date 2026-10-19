@@ -1,0 +1,5 @@
+r_canon.cr3    candidates 3 largest 0.96MB read+scan 7ms -> x_r_canon.cr3.jpg
+r_fuji.raf     candidates 2 largest 4.17MB read+scan 12ms -> x_r_fuji.raf.jpg
+r_iphone.dng   candidates 66 largest 5.19MB read+scan 21ms -> x_r_iphone.dng.jpg
+r_nikon.nef    candidates 3 largest 1.29MB read+scan 9ms -> x_r_nikon.nef.jpg
+r_sony.arw     candidates 143 largest 7.42MB read+scan 35ms -> x_r_sony.arw.jpg

@@ -1,0 +1,75 @@
+AV   a_aac.aac              playable=true soun:aac 
+AV   a_aac.m4a              playable=true soun:aac 
+AV   a_ac3.ac3              playable=true soun:ac-3
+AV   a_alac.m4a             playable=true soun:alac
+AV   a_eac3.eac3            playable=true soun:ec-3
+AV   a_flac.flac            playable=true soun:flac
+AV   a_flac.mka             ERROR Cannot Open
+AV   a_float32.wav          playable=true soun:lpcm
+AV   a_mp2.mp2              playable=true soun:.mp2
+AV   a_mp3.mp3              playable=true soun:.mp3
+AV   a_opus.ogg             playable=true soun:opus
+AV   a_opus.opus            playable=true soun:opus
+AV   a_opus.webm            ERROR Cannot Open
+AV   a_pcm16.aiff           playable=true soun:lpcm
+AV   a_pcm16.caf            playable=true soun:lpcm
+AV   a_pcm16.wav            playable=true soun:lpcm
+AV   a_pcm24.aiff           playable=true soun:lpcm
+AV   a_pcm24.wav            playable=true soun:lpcm
+AV   a_ulaw.aifc            playable=true soun:ulaw
+AV   a_vorbis.ogg           playable=true soun:vorb
+AV   a_wma.wma              ERROR Cannot Open
+IMG  i_apng.apng            full=160x90 0ms embedded=160x90 0ms thumb512 0ms
+IMG  i_avif.avif            full=640x360 0ms embedded=640x360 68ms thumb512 5ms
+IMG  i_bmp.bmp              full=640x360 0ms embedded=640x360 0ms thumb512 1ms
+IMG  i_dds.dds              full=FAIL embedded=none thumb512=FAIL
+IMG  i_exr.exr              full=640x360 0ms embedded=640x360 0ms thumb512 2ms
+IMG  i_gif.gif              full=160x90 0ms embedded=160x90 0ms thumb512 0ms
+IMG  i_heic.heic            full=640x360 0ms embedded=640x360 4ms thumb512 1ms
+IMG  i_icns.icns            full=256x256 0ms embedded=256x256 0ms thumb512 0ms
+IMG  i_ico.ico              full=256x256 0ms embedded=256x256 0ms thumb512 0ms
+IMG  i_jp2.jp2              full=640x360 0ms embedded=320x180 5ms thumb512 10ms
+IMG  i_jpeg.jpg             full=640x360 0ms embedded=640x360 0ms thumb512 1ms
+IMG  i_pdf.pdf              full=FAIL embedded=640x360 1ms thumb512 1ms
+IMG  i_png.png              full=640x360 0ms embedded=640x360 1ms thumb512 2ms
+IMG  i_psd.psd              full=640x360 0ms embedded=640x360 0ms thumb512 1ms
+IMG  i_tga.tga              full=640x360 0ms embedded=640x360 0ms thumb512 1ms
+IMG  i_tiff_ff.tiff         full=640x360 0ms embedded=640x360 0ms thumb512 1ms
+IMG  i_tiff_lzw.tif         full=640x360 0ms embedded=640x360 0ms thumb512 1ms
+IMG  i_webp.webp            full=320x180 0ms embedded=320x180 0ms thumb512 0ms
+IMG  r_canon.cr3            full=3408x2272 1524ms embedded=3408x2272 24ms thumb512 123ms
+IMG  r_fuji.raf             full=6240x4160 1ms embedded=4096x2731 79ms thumb512 50ms
+IMG  r_iphone.dng           full=4032x3024 3ms embedded=3024x4032 72ms thumb512 14ms
+IMG  r_nikon.nef            full=6048x4024 4ms embedded=4096x2725 120ms thumb512 133ms
+IMG  r_sony.arw             full=7008x4672 5ms embedded=1616x1080 10ms thumb512 348ms
+AV   v_av1_opus.mp4         playable=true vide:av01 soun:opus
+AV   v_av1_opus.webm        ERROR Cannot Open
+AV   v_dnxhd.mov            playable=false vide:AVdn(unplayable)
+AV   v_dv.dv                playable=true vide:dvc  soun:lpcm tmcd:tmcd
+AV   v_h264_10bit.mp4       playable=true vide:avc1
+AV   v_h264_aac.3gp         playable=true vide:avc1 soun:aac 
+AV   v_h264_aac.flv         ERROR Cannot Open
+AV   v_h264_aac.m2ts        playable=true vide:avc1
+AV   v_h264_aac.m4v         playable=true vide:avc1 soun:aac 
+AV   v_h264_aac.mkv         ERROR Cannot Open
+AV   v_h264_aac.mov         playable=true vide:avc1 soun:aac 
+AV   v_h264_aac.mp4         playable=true vide:avc1 soun:aac 
+AV   v_h264_aac.ts          playable=true vide:avc1 soun:aac 
+AV   v_h264_ac3.mp4         playable=true vide:avc1 soun:ac-3
+AV   v_h264_alac.mov        playable=true vide:avc1 soun:alac
+AV   v_h264_eac3.mp4        playable=true vide:avc1 soun:ec-3
+AV   v_h264_mp3.avi         ERROR Cannot Open
+AV   v_h264_pcm.mov         playable=true vide:avc1 soun:lpcm
+AV   v_hevc_10bit.mov       playable=true vide:hvc1
+AV   v_hevc_aac.mkv         ERROR Cannot Open
+AV   v_hevc_hev1.mp4        playable=false vide:hev1(unplayable) soun:aac 
+AV   v_hevc_hvc1.mp4        playable=true vide:hvc1 soun:aac 
+AV   v_mjpeg.avi            playable=true vide:dmb1
+AV   v_mpeg2.mpg            playable=true soun:.mp2 vide:mp2v
+AV   v_mpeg4_mp3.avi        ERROR Cannot Open
+AV   v_prores422.mov        playable=true vide:apcn soun:lpcm
+AV   v_prores4444.mov       playable=true vide:ap4h
+AV   v_vp8_vorbis.webm      ERROR Cannot Open
+AV   v_vp9_opus.mkv         ERROR Cannot Open
+AV   v_vp9_opus.webm        ERROR Cannot Open
+AV   v_wmv2_wma.wmv         ERROR Cannot Open

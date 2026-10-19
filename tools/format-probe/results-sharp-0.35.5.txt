@@ -1,0 +1,23 @@
+OK   i_apng.apng          512x288 4ms
+OK   i_avif.avif          512x288 9ms
+FAIL i_bmp.bmp            Input file contains unsupported image format
+FAIL i_dds.dds            Input file contains unsupported image format
+FAIL i_exr.exr            Input file contains unsupported image format
+OK   i_gif.gif            512x288 2ms
+FAIL i_heic.heic          corpus/i_heic.heic: bad seek to 12259
+FAIL i_icns.icns          Input file contains unsupported image format
+FAIL i_ico.ico            Input file contains unsupported image format
+FAIL i_jp2.jp2            Input file contains unsupported image format
+OK   i_jpeg.jpg           512x288 3ms
+FAIL i_pdf.pdf            Input file contains unsupported image format
+OK   i_png.png            512x288 3ms
+FAIL i_psd.psd            Input file contains unsupported image format
+FAIL i_tga.tga            Input file contains unsupported image format
+OK   i_tiff_ff.tiff       512x288 2ms
+OK   i_tiff_lzw.tif       512x288 6ms
+OK   i_webp.webp          512x288 3ms
+FAIL r_canon.cr3          Input file contains unsupported image format
+FAIL r_fuji.raf           Input file contains unsupported image format
+OK   r_iphone.dng         512x384 51ms
+FAIL r_nikon.nef          Warning treated as error due to failOn setting
+FAIL r_sony.arw           Input file contains unsupported image format

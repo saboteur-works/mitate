@@ -1,0 +1,687 @@
+{
+ "versions": {
+  "node": "24.22.0",
+  "acorn": "8.18.0",
+  "ada": "4.0.0",
+  "amaro": "1.1.11",
+  "ares": "1.34.8",
+  "brotli": "1.2.0",
+  "cldr": "48.0",
+  "icu": "78.2",
+  "llhttp": "9.4.3",
+  "merve": "1.2.2",
+  "modules": "149",
+  "napi": "10",
+  "nbytes": "0.1.4",
+  "ncrypto": "0.0.1",
+  "nghttp2": "1.70.0",
+  "nghttp3": "",
+  "ngtcp2": "",
+  "openssl": "0.0.0",
+  "simdjson": "4.6.11",
+  "simdutf": "7.7.0",
+  "sqlite": "3.53.4",
+  "tz": "2026d",
+  "undici": "7.29.1",
+  "unicode": "17.0",
+  "uv": "1.52.1",
+  "uvwasi": "0.0.23",
+  "v8": "15.2.124.43-electron.0",
+  "zlib": "1.3.2.1-motley",
+  "zstd": "1.6.0",
+  "electron": "44.9.0",
+  "chrome": "152.0.7977.167"
+ },
+ "canPlayType": {
+  "video/mp4; codecs=\"avc1.42E01E\"": "probably",
+  "video/mp4; codecs=\"hvc1.1.6.L93.B0\"": "probably",
+  "video/mp4; codecs=\"hev1.1.6.L93.B0\"": "probably",
+  "video/mp4; codecs=\"av01.0.05M.08\"": "probably",
+  "video/webm; codecs=\"vp9\"": "probably",
+  "video/webm; codecs=\"vp8\"": "probably",
+  "video/quicktime": "\"\"",
+  "video/x-matroska": "maybe",
+  "video/mp4; codecs=\"ap4h\"": "\"\"",
+  "video/mp4; codecs=\"apcn\"": "\"\"",
+  "audio/mpeg": "probably",
+  "audio/mp4; codecs=\"mp4a.40.2\"": "probably",
+  "audio/mp4; codecs=\"alac\"": "\"\"",
+  "audio/flac": "probably",
+  "audio/wav": "maybe",
+  "audio/aiff": "\"\"",
+  "audio/x-aiff": "\"\"",
+  "audio/ogg; codecs=\"opus\"": "probably",
+  "audio/ogg; codecs=\"vorbis\"": "probably",
+  "audio/mp4; codecs=\"ac-3\"": "\"\"",
+  "audio/mp4; codecs=\"ec-3\"": "\"\"",
+  "audio/x-ms-wma": "\"\"",
+  "image/jxl": "\"\""
+ },
+ "files": {
+  "a_aac.aac": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2.01,
+   "audioBytes": 13197
+  },
+  "a_aac.m4a": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 12721
+  },
+  "a_ac3.ac3": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0
+  },
+  "a_alac.m4a": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0
+  },
+  "a_eac3.eac3": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0
+  },
+  "a_flac.flac": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 20124
+  },
+  "a_flac.mka": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 20124
+  },
+  "a_float32.wav": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 274432
+  },
+  "a_mp2.mp2": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0
+  },
+  "a_mp3.mp3": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 11712
+  },
+  "a_opus.ogg": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2.01,
+   "audioBytes": 13650
+  },
+  "a_opus.opus": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2.01,
+   "audioBytes": 13650
+  },
+  "a_opus.webm": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2.01,
+   "audioBytes": 13650
+  },
+  "a_pcm16.aiff": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0
+  },
+  "a_pcm16.caf": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0
+  },
+  "a_pcm16.wav": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 139264
+  },
+  "a_pcm24.aiff": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0
+  },
+  "a_pcm24.wav": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 208845
+  },
+  "a_ulaw.aifc": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0
+  },
+  "a_vorbis.ogg": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 5576
+  },
+  "a_wma.wma": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0
+  },
+  "i_apng.apng": {
+   "ok": true,
+   "w": 160,
+   "h": 90,
+   "painted": true,
+   "ms": 148
+  },
+  "i_avif.avif": {
+   "ok": true,
+   "w": 640,
+   "h": 360,
+   "painted": true,
+   "ms": 134
+  },
+  "i_bmp.bmp": {
+   "ok": true,
+   "w": 640,
+   "h": 360,
+   "painted": true,
+   "ms": 3
+  },
+  "i_dds.dds": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 1
+  },
+  "i_exr.exr": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 1
+  },
+  "i_gif.gif": {
+   "ok": true,
+   "w": 160,
+   "h": 90,
+   "painted": true,
+   "ms": 2
+  },
+  "i_heic.heic": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 1
+  },
+  "i_icns.icns": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 1
+  },
+  "i_ico.ico": {
+   "ok": true,
+   "w": 256,
+   "h": 256,
+   "painted": false,
+   "ms": 1
+  },
+  "i_jp2.jp2": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 1
+  },
+  "i_jpeg.jpg": {
+   "ok": true,
+   "w": 640,
+   "h": 360,
+   "painted": true,
+   "ms": 2
+  },
+  "i_pdf.pdf": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 1
+  },
+  "i_png.png": {
+   "ok": true,
+   "w": 640,
+   "h": 360,
+   "painted": true,
+   "ms": 2
+  },
+  "i_psd.psd": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 1
+  },
+  "i_tga.tga": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 0
+  },
+  "i_tiff_ff.tiff": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 0
+  },
+  "i_tiff_lzw.tif": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 1
+  },
+  "i_webp.webp": {
+   "ok": true,
+   "w": 320,
+   "h": 180,
+   "painted": true,
+   "ms": 2
+  },
+  "r_canon.cr3": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 0
+  },
+  "r_fuji.raf": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 1
+  },
+  "r_iphone.dng": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 1
+  },
+  "r_nikon.nef": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 1
+  },
+  "r_sony.arw": {
+   "ok": false,
+   "err": "onerror",
+   "ms": 1
+  },
+  "t_svg.svg": {
+   "ok": true,
+   "w": 200,
+   "h": 100,
+   "painted": true,
+   "ms": 113
+  },
+  "v_av1_opus.mp4": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 13650,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 146589,
+   "frames": 40,
+   "painted": true
+  },
+  "v_av1_opus.webm": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2.01,
+   "audioBytes": 13838,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 146589,
+   "frames": 41,
+   "painted": true
+  },
+  "v_dnxhd.mov": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0,
+   "w": 0,
+   "h": 0,
+   "videoBytes": 0,
+   "frames": 0,
+   "painted": false
+  },
+  "v_dv.dv": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0,
+   "w": 0,
+   "h": 0,
+   "videoBytes": 0,
+   "frames": 0,
+   "painted": false
+  },
+  "v_h264_10bit.mp4": {
+   "ok": true,
+   "t": 1.2,
+   "dur": 2,
+   "audioBytes": 0,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 148467,
+   "frames": 41,
+   "painted": true
+  },
+  "v_h264_aac.3gp": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 12912,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 154786,
+   "frames": 40,
+   "painted": true
+  },
+  "v_h264_aac.flv": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0,
+   "w": 0,
+   "h": 0,
+   "videoBytes": 0,
+   "frames": 0,
+   "painted": false
+  },
+  "v_h264_aac.m2ts": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0,
+   "w": 0,
+   "h": 0,
+   "videoBytes": 0,
+   "frames": 0,
+   "painted": false
+  },
+  "v_h264_aac.m4v": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 12912,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 154786,
+   "frames": 40,
+   "painted": true
+  },
+  "v_h264_aac.mkv": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2.02,
+   "audioBytes": 12517,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 154786,
+   "frames": 40,
+   "painted": true
+  },
+  "v_h264_aac.mov": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 12912,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 154786,
+   "frames": 40,
+   "painted": true
+  },
+  "v_h264_aac.mp4": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 12721,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 154786,
+   "frames": 40,
+   "painted": true
+  },
+  "v_h264_aac.ts": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0,
+   "w": 0,
+   "h": 0,
+   "videoBytes": 0,
+   "frames": 0,
+   "painted": false
+  },
+  "v_h264_ac3.mp4": {
+   "ok": true,
+   "t": 1.2,
+   "dur": 2,
+   "audioBytes": 0,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 154786,
+   "frames": 41,
+   "painted": true
+  },
+  "v_h264_alac.mov": {
+   "ok": true,
+   "t": 1.2,
+   "dur": 2,
+   "audioBytes": 0,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 154786,
+   "frames": 41,
+   "painted": true
+  },
+  "v_h264_eac3.mp4": {
+   "ok": true,
+   "t": 1.2,
+   "dur": 2,
+   "audioBytes": 0,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 154786,
+   "frames": 41,
+   "painted": true
+  },
+  "v_h264_mp3.avi": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0,
+   "w": 0,
+   "h": 0,
+   "videoBytes": 0,
+   "frames": 0,
+   "painted": false
+  },
+  "v_h264_pcm.mov": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 139264,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 154786,
+   "frames": 41,
+   "painted": true
+  },
+  "v_hevc_10bit.mov": {
+   "ok": true,
+   "t": 1.2,
+   "dur": 2,
+   "audioBytes": 0,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 113783,
+   "frames": 41,
+   "painted": true
+  },
+  "v_hevc_aac.mkv": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2.02,
+   "audioBytes": 12721,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 115423,
+   "frames": 41,
+   "painted": true
+  },
+  "v_hevc_hev1.mp4": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 12721,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 115423,
+   "frames": 40,
+   "painted": true
+  },
+  "v_hevc_hvc1.mp4": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 12912,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 115423,
+   "frames": 40,
+   "painted": true
+  },
+  "v_mjpeg.avi": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0,
+   "w": 0,
+   "h": 0,
+   "videoBytes": 0,
+   "frames": 0,
+   "painted": false
+  },
+  "v_mpeg2.mpg": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0,
+   "w": 0,
+   "h": 0,
+   "videoBytes": 0,
+   "frames": 0,
+   "painted": false
+  },
+  "v_mpeg4_mp3.avi": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0,
+   "w": 0,
+   "h": 0,
+   "videoBytes": 0,
+   "frames": 0,
+   "painted": false
+  },
+  "v_prores422.mov": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2,
+   "audioBytes": 137216,
+   "w": 0,
+   "h": 0,
+   "videoBytes": 0,
+   "frames": 0,
+   "painted": false
+  },
+  "v_prores4444.mov": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0,
+   "w": 0,
+   "h": 0,
+   "videoBytes": 0,
+   "frames": 0,
+   "painted": false
+  },
+  "v_vp8_vorbis.webm": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2.02,
+   "audioBytes": 5737,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 47924,
+   "frames": 40,
+   "painted": true
+  },
+  "v_vp9_opus.mkv": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2.01,
+   "audioBytes": 13650,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 151736,
+   "frames": 40,
+   "painted": true
+  },
+  "v_vp9_opus.webm": {
+   "ok": true,
+   "t": 1.16,
+   "dur": 2.01,
+   "audioBytes": 13650,
+   "w": 640,
+   "h": 360,
+   "videoBytes": 151736,
+   "frames": 40,
+   "painted": true
+  },
+  "v_wmv2_wma.wmv": {
+   "ok": false,
+   "err": "error code 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed",
+   "t": 0,
+   "dur": 0,
+   "audioBytes": 0,
+   "w": 0,
+   "h": 0,
+   "videoBytes": 0,
+   "frames": 0,
+   "painted": false
+  }
+ }
+}
