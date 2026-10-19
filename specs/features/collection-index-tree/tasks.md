@@ -88,9 +88,9 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Done:** [ ]
 
 ### Task 10: Tree model
-**What:** Implement the pure function that turns index records into the folder tree: only folders containing at least one supported file at any depth, subfolders before files, case-insensitive natural numeric sort.
+**What:** Implement the pure function that turns index records into the folder tree: root folders always present (even when empty or unavailable), every folder below the roots only if it contains at least one supported file at any depth, subfolders before files, case-insensitive natural numeric sort.
 **Files:** src/shared/tree-model.js, tests/unit/tree-model.test.js
-**Done when:** `npx vitest run tests/unit/tree-model.test.js` exits 0, asserting IMG_2 sorts before IMG_10, folders precede files at each level, case differences do not affect order, folders with no supported file at any depth are absent, and nodes expose an `unavailable` flag passed through from the folder record.
+**Done when:** `npx vitest run tests/unit/tree-model.test.js` exits 0, asserting IMG_2 sorts before IMG_10, folders precede files at each level, case differences do not affect order, non-root folders with no supported file at any depth are absent, a root folder with no files or marked unavailable is still present, and nodes expose an `unavailable` flag passed through from the folder record.
 **Depends on:** 4
 **Estimate:** 2
 **Notes:** Covers FR-11 (structure and order). Input record shape is defined by the storage module (Task 4).
@@ -124,9 +124,9 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Done:** [ ]
 
 ### Task 14: Virtualized folder tree view
-**What:** Render a collection as the tree from Task 10 with virtualization so only visible or expanded nodes are in the DOM, and mark files of unavailable folders "unavailable" instead of hiding them.
+**What:** Render a collection as the tree from Task 10 with virtualization so only visible or expanded nodes are in the DOM, always show root folders (including empty or unavailable ones), and mark files of unavailable folders "unavailable" instead of hiding them.
 **Files:** src/renderer/tree-view.js, src/renderer/styles.css, tests/e2e/tree-view.spec.js
-**Done when:** `npm run test:e2e -- tests/e2e/tree-view.spec.js` exits 0, asserting: the fixture collection tree mirrors disk structure with names, a generated large index (e.g. 50,000 files) renders a DOM node count that stays under a fixed bound unrelated to index size, and a collection with an unavailable folder shows its files marked "unavailable".
+**Done when:** `npm run test:e2e -- tests/e2e/tree-view.spec.js` exits 0, asserting: the fixture collection tree mirrors disk structure with names, a generated large index (e.g. 50,000 files) renders a DOM node count that stays under a fixed bound unrelated to index size, a collection with an unavailable folder shows its files marked "unavailable", and an unavailable or empty root folder is still shown (unavailable ones marked "unavailable").
 **Depends on:** 10, 13
 **Estimate:** 5
 **Notes:** Covers FR-11 (render), FR-4 (display).
