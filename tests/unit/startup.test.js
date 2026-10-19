@@ -48,6 +48,46 @@ describe('startStorage', () => {
     );
   });
 
+  it('reports a store.json with a version below the supported one and leaves it untouched', async () => {
+    await expectReportedAndUntouched(
+      JSON.stringify({ version: 0, collections: {}, folders: {}, index: {}, access: {} })
+    );
+  });
+
+  // chmod 000 has no effect on root, so the unreadable-file case cannot run there.
+  it.skipIf(typeof process.getuid === 'function' && process.getuid() === 0)(
+    'reports an unreadable (mode 000) store.json and leaves its bytes and mode untouched',
+    async () => {
+      fs.writeFileSync(
+        storeFile,
+        JSON.stringify({ version: 1, collections: {}, folders: {}, index: {}, access: {} }),
+        { mode: 0o600 }
+      );
+      fs.chmodSync(storeFile, 0o600);
+      const before = fs.readFileSync(storeFile);
+      fs.chmodSync(storeFile, 0o000);
+      try {
+        const modeBefore = fs.statSync(storeFile).mode & 0o777;
+        const filesBefore = fs.readdirSync(baseDir).sort();
+        const reportError = vi.fn();
+
+        const result = await startStorage({ baseDir, openStorage, reportError });
+
+        expect(result.ok).toBe(false);
+        expect(result.storage).toBeUndefined();
+        expect(reportError).toHaveBeenCalledTimes(1);
+        expect(reportError.mock.calls[0][0]).toContain(storeFile);
+        expect(fs.statSync(storeFile).mode & 0o777).toBe(modeBefore);
+        expect(modeBefore).toBe(0o000);
+        expect(fs.readdirSync(baseDir).sort()).toEqual(filesBefore);
+        fs.chmodSync(storeFile, 0o600);
+        expect(fs.readFileSync(storeFile).equals(before)).toBe(true);
+      } finally {
+        fs.chmodSync(storeFile, 0o600);
+      }
+    }
+  );
+
   it('opens a valid store without reporting an error', async () => {
     fs.writeFileSync(
       storeFile,
