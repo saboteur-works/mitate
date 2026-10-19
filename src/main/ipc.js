@@ -21,6 +21,14 @@
  *                          { ok: false, error, busy: true } (error code
  *                          RESCAN_IN_PROGRESS from the rescan service).
  *
+ * getRegisteredHandler(channel) -> the handler function registerIpc registered for
+ *                          that channel, or undefined. The module keeps a registry of
+ *                          the original handlers (last registerIpc call wins); it is
+ *                          not changed when a channel is later re-registered with
+ *                          ipcMain.removeHandler/handle, so the original stays
+ *                          reachable for wrapping or delegation. Handlers have the
+ *                          signature (event, ...args).
+ *
  * Service errors are returned as { ok: false, error } so the renderer can show
  * the message without Electron's "Error invoking remote method" prefix.
  */
@@ -33,9 +41,21 @@ const CHANNELS = {
   rescanCollection: 'collections:rescan',
 };
 
+const registered = new Map();
+
+function getRegisteredHandler(channel) {
+  return registered.get(channel);
+}
+
 const PICKER_PROPERTIES = ['openDirectory', 'multiSelections'];
 
 function registerIpc({ ipcMain, dialog, service, rescanService = null, getWindow = () => null }) {
+  registered.clear();
+  function handle(channel, fn) {
+    registered.set(channel, fn);
+    ipcMain.handle(channel, fn);
+  }
+
   async function guard(fn) {
     try {
       return { ok: true, ...(await fn()) };
@@ -46,7 +66,7 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, getWindow
     }
   }
 
-  ipcMain.handle(CHANNELS.pickFolders, async () => {
+  handle(CHANNELS.pickFolders, async () => {
     const options = { title: 'Add folder', properties: [...PICKER_PROPERTIES] };
     const win = getWindow();
     const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
@@ -54,20 +74,20 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, getWindow
     return { canceled: false, paths: [...result.filePaths] };
   });
 
-  ipcMain.handle(CHANNELS.createCollection, (_event, name, directories) =>
+  handle(CHANNELS.createCollection, (_event, name, directories) =>
     guard(async () => ({ view: await service.createCollection(name, directories) })));
 
-  ipcMain.handle(CHANNELS.listCollections, () =>
+  handle(CHANNELS.listCollections, () =>
     guard(async () => ({ summaries: await service.listCollectionSummaries() })));
 
-  ipcMain.handle(CHANNELS.getCollectionView, (_event, collectionId) =>
+  handle(CHANNELS.getCollectionView, (_event, collectionId) =>
     guard(async () => {
       const view = service.getCollectionView(collectionId);
       if (!view) throw new Error(`Unknown collection: ${String(collectionId)}`);
       return { view };
     }));
 
-  ipcMain.handle(CHANNELS.rescanCollection, (_event, collectionId) =>
+  handle(CHANNELS.rescanCollection, (_event, collectionId) =>
     guard(async () => {
       if (!rescanService) throw new Error('Rescan is not available');
       const { summary, ...view } = await rescanService.rescanCollection(collectionId);
@@ -75,4 +95,4 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, getWindow
     }));
 }
 
-module.exports = { registerIpc, CHANNELS, PICKER_PROPERTIES };
+module.exports = { registerIpc, getRegisteredHandler, CHANNELS, PICKER_PROPERTIES };

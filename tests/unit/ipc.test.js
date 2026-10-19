@@ -98,3 +98,34 @@ describe('registerIpc', () => {
     });
   });
 });
+
+describe('getRegisteredHandler', () => {
+  it('returns the registered handler for each channel, giving the same result as invoking the channel', async () => {
+    const { getRegisteredHandler } = require('../../src/main/ipc.js');
+    const view = { collection: { id: 'c1' }, folders: [], files: [] };
+    const service = {
+      createCollection: async (name) => ({ collection: { name }, folders: [], files: [] }),
+      listCollectionSummaries: async () => [],
+      getCollectionView: () => view,
+    };
+    const rescanService = { rescanCollection: async () => ({ ...view, summary: { added: 0 } }) };
+    const { invoke } = setup({ service, rescanService });
+    const args = {
+      [CHANNELS.pickFolders]: [],
+      [CHANNELS.createCollection]: ['N', ['/a']],
+      [CHANNELS.listCollections]: [],
+      [CHANNELS.getCollectionView]: ['c1'],
+      [CHANNELS.rescanCollection]: ['c1'],
+    };
+    for (const channel of Object.values(CHANNELS)) {
+      const handler = getRegisteredHandler(channel);
+      expect(typeof handler, channel).toBe('function');
+      expect(await handler({}, ...args[channel]), channel).toEqual(await invoke(channel, ...args[channel]));
+    }
+  });
+
+  it('returns undefined for a channel that was never registered', () => {
+    const { getRegisteredHandler } = require('../../src/main/ipc.js');
+    expect(getRegisteredHandler('nope:nothing')).toBeUndefined();
+  });
+});

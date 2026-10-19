@@ -5,13 +5,15 @@ const os = require('node:os');
 const path = require('node:path');
 const { test, expect, _electron: electron } = require('@playwright/test');
 const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tree.js');
+const { wrapHandler } = require('../support/ipc-wrap.js');
 
 // Why the main-process handler is slowed rather than window.mediaOrganizer.createCollection:
 // the object comes from contextBridge, so the page cannot reliably replace its members (and
 // the renderer holds its own reference). Instead the test wraps the already-registered
-// 'collections:create' handler through ipcMain._invokeHandlers (Electron internal Map of
-// channel -> handler; the test fails loudly if it is absent) so each call counts itself and
-// waits on a gate the test releases. No production code carries a test hook.
+// 'collections:create' handler (tests/support/ipc-wrap.js: original looked up with
+// getRegisteredHandler from src/main/ipc.js, channel re-registered with
+// ipcMain.removeHandler/handle; fails loudly if the handler is absent) so each call
+// counts itself and waits on a gate the test releases. No production code carries a test hook.
 test('Create is disabled while a collection is being created; double-click creates one', async () => {
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-organizer-e2e-'));
   const tree = buildFixtureTree();
@@ -20,23 +22,20 @@ test('Create is disabled while a collection is being created; double-click creat
     cwd: path.join(__dirname, '..', '..'),
   });
   try {
-    await app.evaluate(({ dialog, ipcMain }, folderPath) => {
+    await app.evaluate(({ dialog }, folderPath) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folderPath] });
-      const handlers = ipcMain._invokeHandlers;
-      const original = handlers && handlers.get && handlers.get('collections:create');
-      if (typeof original !== 'function') {
-        throw new Error('ipcMain._invokeHandlers has no collections:create handler');
-      }
+    }, tree.root);
+    await wrapHandler(app, 'collections:create', (original) => {
       globalThis.__createCalls = 0;
       let release;
       const gate = new Promise((resolve) => { release = resolve; });
       globalThis.__releaseCreate = release;
-      handlers.set('collections:create', async (...args) => {
+      return async (...args) => {
         globalThis.__createCalls += 1;
         await gate;
         return original(...args);
-      });
-    }, tree.root);
+      };
+    });
 
     const window = await app.firstWindow();
     await window.waitForLoadState('domcontentloaded');

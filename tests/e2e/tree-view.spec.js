@@ -13,6 +13,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { test, expect, _electron: electron } = require('@playwright/test');
 const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tree.js');
+const { wrapHandler } = require('../support/ipc-wrap.js');
 const { openStorage } = require('../../src/main/storage/index.js');
 const { createCollectionService } = require('../../src/main/collections/service.js');
 
@@ -363,8 +364,9 @@ test('overlapping roots: the root /a/b and the subfolder b under root /a expand 
 });
 
 // The late response is produced in the main process: the getView handler is wrapped
-// through ipcMain._invokeHandlers (Electron internal channel -> handler Map; the test
-// fails loudly if absent, as in create-collection.spec.js) so each collection's reply
+// through tests/support/ipc-wrap.js (getRegisteredHandler from src/main/ipc.js plus
+// ipcMain.removeHandler/handle; fails loudly if absent, as in create-collection.spec.js)
+// so each collection's reply
 // waits on a gate the test releases. Gates make the arrival order deterministic.
 for (const [first, second] of [['A', 'B'], ['B', 'A']]) {
   test(`a late view response for ${first} does not overwrite the tree of ${second}, clicked last`, async () => {
@@ -377,20 +379,15 @@ for (const [first, second] of [['A', 'B'], ['B', 'A']]) {
 
       session = await launch(userDataDir);
       const { app, window } = session;
-      await app.evaluate(({ ipcMain }) => {
-        const handlers = ipcMain._invokeHandlers;
-        const original = handlers && handlers.get && handlers.get('collections:getView');
-        if (typeof original !== 'function') {
-          throw new Error('ipcMain._invokeHandlers has no collections:getView handler');
-        }
+      await wrapHandler(app, 'collections:getView', (original) => {
         globalThis.__viewReleases = {};
         globalThis.__viewDone = [];
-        handlers.set('collections:getView', async (event, collectionId) => {
+        return async (event, collectionId) => {
           await new Promise((resolve) => { globalThis.__viewReleases[collectionId] = resolve; });
           const result = await original(event, collectionId);
           globalThis.__viewDone.push(collectionId);
           return result;
-        });
+        };
       });
       const release = (id) => app.evaluate((_electron, cid) => globalThis.__viewReleases[cid](), id);
       const pending = (id) => app.evaluate((_electron, cid) => typeof globalThis.__viewReleases[cid] === 'function', id);
