@@ -40,16 +40,16 @@ function fileRecord(folderPath, rel) {
 }
 
 // Seeds one collection: folders = [{ id, path, unavailable, files: [rel, ...] }].
-function seedCollection(userDataDir, name, folders) {
+function seedCollection(userDataDir, name, folders, collectionId = 'col-1') {
   const storage = openStorage({ location: { baseDir: userDataDir } });
   storage.putCollection({
-    id: 'col-1',
+    id: collectionId,
     name,
     folderIds: folders.map((f) => f.id),
     createdAt: new Date().toISOString(),
   });
   for (const f of folders) {
-    storage.putFolder({ id: f.id, collectionId: 'col-1', path: f.path, unavailable: f.unavailable });
+    storage.putFolder({ id: f.id, collectionId, path: f.path, unavailable: f.unavailable });
     storage.replaceFolderIndex(f.id, f.files.map((rel) => fileRecord(f.path, rel)));
   }
 }
@@ -294,3 +294,71 @@ test('unavailable folders keep their files, marked unavailable; unavailable empt
     fs.rmSync(userDataDir, { recursive: true, force: true });
   }
 });
+
+// The late response is produced in the main process: the getView handler is wrapped
+// through ipcMain._invokeHandlers (Electron internal channel -> handler Map; the test
+// fails loudly if absent, as in create-collection.spec.js) so each collection's reply
+// waits on a gate the test releases. Gates make the arrival order deterministic.
+for (const [first, second] of [['A', 'B'], ['B', 'A']]) {
+  test(`a late view response for ${first} does not overwrite the tree of ${second}, clicked last`, async () => {
+    const userDataDir = newUserDataDir();
+    const pathOf = { A: path.join(userDataDir, 'missing', 'root-a'), B: path.join(userDataDir, 'missing', 'root-b') };
+    let session;
+    try {
+      seedCollection(userDataDir, 'Alpha', [{ id: 'f-a', path: pathOf.A, unavailable: false, files: ['only-a.jpg'] }], 'col-a');
+      seedCollection(userDataDir, 'Beta', [{ id: 'f-b', path: pathOf.B, unavailable: false, files: ['only-b.jpg'] }], 'col-b');
+
+      session = await launch(userDataDir);
+      const { app, window } = session;
+      await app.evaluate(({ ipcMain }) => {
+        const handlers = ipcMain._invokeHandlers;
+        const original = handlers && handlers.get && handlers.get('collections:getView');
+        if (typeof original !== 'function') {
+          throw new Error('ipcMain._invokeHandlers has no collections:getView handler');
+        }
+        globalThis.__viewReleases = {};
+        globalThis.__viewDone = [];
+        handlers.set('collections:getView', async (event, collectionId) => {
+          await new Promise((resolve) => { globalThis.__viewReleases[collectionId] = resolve; });
+          const result = await original(event, collectionId);
+          globalThis.__viewDone.push(collectionId);
+          return result;
+        });
+      });
+      const release = (id) => app.evaluate((_electron, cid) => globalThis.__viewReleases[cid](), id);
+      const pending = (id) => app.evaluate((_electron, cid) => typeof globalThis.__viewReleases[cid] === 'function', id);
+      const done = (id) => app.evaluate((_electron, cid) => globalThis.__viewDone.includes(cid), id);
+      const item = (label) => window.getByTestId('collection-item').filter({ hasText: label });
+      const idOf = { A: 'col-a', B: 'col-b' };
+      const labelOf = { A: 'Alpha', B: 'Beta' };
+
+      await expect(window.getByTestId('collection-item')).toHaveCount(2, { timeout: 30000 });
+      await item(labelOf[first]).click();
+      await expect.poll(() => pending(idOf[first])).toBe(true);
+      await item(labelOf[second]).click();
+      await expect.poll(() => pending(idOf[second])).toBe(true);
+
+      // The last-clicked collection answers first and is shown.
+      await release(idOf[second]);
+      await expect(rowAt(window, pathOf[second])).toHaveCount(1);
+      await expect(item(labelOf[second])).toHaveClass(/collection-selected/);
+
+      // The earlier request answers late: its response must be discarded.
+      await release(idOf[first]);
+      await expect.poll(() => done(idOf[first])).toBe(true);
+      await window.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      await window.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+
+      await expect(rowAt(window, pathOf[first])).toHaveCount(0);
+      await expect(rowAt(window, pathOf[second])).toHaveCount(1);
+      await expect(window.getByTestId('tree-row')).toHaveCount(1);
+      await expect(item(labelOf[second])).toHaveClass(/collection-selected/);
+      await expect(item(labelOf[first])).not.toHaveClass(/collection-selected/);
+      await rowAt(window, pathOf[second]).click();
+      await expect(rowAt(window, `${pathOf[second]}/only-${second.toLowerCase()}.jpg`)).toHaveCount(1);
+    } finally {
+      if (session) await session.app.close();
+      fs.rmSync(userDataDir, { recursive: true, force: true });
+    }
+  });
+}

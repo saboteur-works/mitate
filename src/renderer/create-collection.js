@@ -32,6 +32,8 @@
       ...views.map(({ collection, folders: folderRecords }) => {
         const li = document.createElement('li');
         li.dataset.testid = 'collection-item';
+        li.dataset.collectionId = collection.id;
+        li.classList.toggle('collection-selected', collection.id === selectedCollectionId);
         const name = document.createElement('span');
         name.dataset.testid = 'collection-name-label';
         name.textContent = collection.name;
@@ -39,17 +41,31 @@
         count.dataset.testid = 'collection-folder-count';
         count.textContent = String(folderRecords.length);
         li.append(name, ' (', count, ' folders)');
-        li.addEventListener('click', () => selectCollection(collection.id, li));
+        li.addEventListener('click', () => selectCollection(collection.id));
         return li;
       }),
     );
   }
 
-  async function selectCollection(collectionId, li) {
+  // Id of the collection whose tree is displayed, and a token that orders
+  // selectCollection calls: a view response is applied only if no later call
+  // has started, so a slow earlier response cannot overwrite a newer tree.
+  let selectedCollectionId = null;
+  let latestSelectToken = 0;
+
+  function highlightSelected() {
+    for (const item of collectionList.children) {
+      item.classList.toggle('collection-selected', item.dataset.collectionId === selectedCollectionId);
+    }
+  }
+
+  async function selectCollection(collectionId) {
+    const token = ++latestSelectToken;
     const result = await api.getCollectionView(collectionId);
+    if (token !== latestSelectToken) return;
     if (!result.ok) return showError(result.error);
-    for (const item of collectionList.children) item.classList.remove('collection-selected');
-    li.classList.add('collection-selected');
+    selectedCollectionId = collectionId;
+    highlightSelected();
     window.TreeView.show(result.view.folders, result.view.files);
     document.dispatchEvent(new CustomEvent('collection-selected', { detail: { collectionId } }));
   }
