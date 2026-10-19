@@ -49,8 +49,13 @@ function createRescanService({ storage, scan = defaultScan } = {}) {
       markUnavailable(folder);
       return false;
     }
+    // Re-read after the await: the snapshot in `folder` may be stale if another
+    // operation changed the record while the scan ran. If the folder was removed
+    // from storage meanwhile, write nothing and report it skipped.
+    const current = storage.getFolder(folder.id);
+    if (!current) return false;
     storage.replaceFolderIndex(folder.id, records);
-    if (folder.unavailable) storage.setFolderUnavailable(folder.id, false);
+    if (current.unavailable) storage.setFolderUnavailable(folder.id, false);
     return true;
   }
 

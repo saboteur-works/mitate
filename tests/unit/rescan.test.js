@@ -82,6 +82,77 @@ describe('rescanCollection', () => {
     expect(result.files.every((f) => f.unavailable === undefined)).toBe(true);
   });
 
+  it('clears the unavailable flag of a folder that was unavailable and scans successfully', async () => {
+    const dir = fs.mkdtempSync(path.join(work, 'clear-'));
+    fs.writeFileSync(path.join(dir, 'one.jpg'), 'x');
+    const created = await create([dir]);
+    const id = created.folders[0].id;
+    storage.setFolderUnavailable(id, true);
+    expect(storage.getFolder(id).unavailable).toBe(true);
+
+    await createRescanService({ storage }).rescanCollection(created.collection.id);
+    expect(storage.getFolder(id).unavailable).toBe(false);
+  });
+
+  // Scenario: the snapshot taken before the await says unavailable=false; while
+  // the scan is awaited another operation marks the folder unavailable. The scan
+  // then succeeds, so the decision must use the re-read state (unavailable=true)
+  // and the final stored flag must be false. Deciding from the stale snapshot
+  // would leave it true.
+  it('decides whether to clear unavailable from the state re-read after the scan', async () => {
+    const dir = fs.mkdtempSync(path.join(work, 'race-'));
+    fs.writeFileSync(path.join(dir, 'one.jpg'), 'x');
+    const created = await create([dir]);
+    const id = created.folders[0].id;
+    expect(storage.getFolder(id).unavailable).toBeFalsy();
+
+    const scan = async (p) => {
+      storage.setFolderUnavailable(id, true); // another operation, mid-scan
+      return runScan(p);
+    };
+    const result = await createRescanService({ storage, scan }).rescanCollection(created.collection.id);
+    expect(result.summary.rescanned).toEqual([id]);
+    expect(storage.getFolder(id).unavailable).toBe(false);
+    expect(result.folders[0].unavailable).toBe(false);
+  });
+
+  // Reverse: snapshot says unavailable=true, another operation clears it during
+  // the scan; the re-read says available so no flag write is needed.
+  it('does not write the flag when the re-read state is already available', async () => {
+    const dir = fs.mkdtempSync(path.join(work, 'race2-'));
+    fs.writeFileSync(path.join(dir, 'one.jpg'), 'x');
+    const created = await create([dir]);
+    const id = created.folders[0].id;
+    storage.setFolderUnavailable(id, true);
+
+    const scan = async (p) => {
+      storage.setFolderUnavailable(id, false);
+      return runScan(p);
+    };
+    const writes = [];
+    const spy = { ...storage, setFolderUnavailable: (...a) => (writes.push(a), storage.setFolderUnavailable(...a)) };
+    await createRescanService({ storage: spy, scan }).rescanCollection(created.collection.id);
+    expect(writes).toEqual([]);
+    expect(storage.getFolder(id).unavailable).toBe(false);
+  });
+
+  it('skips writing when the folder was removed from storage during the scan', async () => {
+    const dir = fs.mkdtempSync(path.join(work, 'removed-'));
+    fs.writeFileSync(path.join(dir, 'one.jpg'), 'x');
+    const created = await create([dir]);
+    const id = created.folders[0].id;
+    const calls = [];
+    const spy = {
+      ...storage,
+      getFolder: () => undefined,
+      replaceFolderIndex: (...a) => calls.push(['replace', ...a]),
+      setFolderUnavailable: (...a) => calls.push(['flag', ...a]),
+    };
+    const rescan = createRescanService({ storage: spy, scan: runScan });
+    await rescan.rescanCollection(created.collection.id).catch(() => {});
+    expect(calls).toEqual([]);
+  });
+
   it('flags a folder unavailable and keeps its files when the scan rejects', async () => {
     const dir = fs.mkdtempSync(path.join(work, 'fail-'));
     fs.writeFileSync(path.join(dir, 'one.jpg'), 'x');
