@@ -1,7 +1,10 @@
 'use strict';
 
 const path = require('node:path');
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { openStorage } = require('./storage/index.js');
+const { createCollectionService } = require('./collections/service.js');
+const { registerIpc } = require('./ipc.js');
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -10,6 +13,7 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
@@ -17,6 +21,9 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  const storage = openStorage({ location: { baseDir: app.getPath('userData') } });
+  const service = createCollectionService({ storage });
+  registerIpc({ ipcMain, dialog, service, getWindow: () => BrowserWindow.getFocusedWindow() });
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

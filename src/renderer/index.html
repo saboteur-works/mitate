@@ -2,11 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'" />
     <title>Media Organizer</title>
   </head>
   <body>
     <h1 id="heading">Media Organizer</h1>
+    <section>
+      <h2>New collection</h2>
+      <label>Name <input type="text" data-testid="collection-name" /></label>
+      <button type="button" data-testid="add-folder">Add folder</button>
+      <ul data-testid="folder-list"></ul>
+      <button type="button" data-testid="create-collection">Create collection</button>
+      <p data-testid="create-error" role="alert" hidden></p>
+    </section>
+    <section>
+      <h2>Collections</h2>
+      <ul data-testid="collection-list"></ul>
+    </section>
     <script src="renderer.js"></script>
+    <script src="create-collection.js"></script>
   </body>
 </html>
