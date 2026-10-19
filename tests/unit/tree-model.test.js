@@ -57,24 +57,37 @@ describe('buildTree', () => {
     expect(names(one)).toEqual(names(two));
   });
 
-  it('omits folders with no supported file at any depth', () => {
+  it('shows an empty root folder with no children', () => {
     const f = [folder('a', '/r'), folder('empty', '/empty')];
     const files = [file('a', '/r', 'deep/er/est/x.jpg'), file('a', '/r', 'top.jpg')];
     const tree = buildTree(f, files);
-    expect(tree.map((n) => n.name)).toEqual(['r']);
-    const all = [];
-    (function walk(n) {
-      all.push(n.relativePath);
-      (n.children || []).forEach(walk);
-    })(tree[0]);
-    expect(all).toContain('deep/er/est');
-    expect(all).not.toContain('other');
-    expect(tree[0].children.map((c) => c.name)).toEqual(['deep', 'top.jpg']);
+    expect(tree.map((n) => n.name)).toEqual(['empty', 'r']);
+    expect(tree[0]).toMatchObject({ type: 'folder', unavailable: false, children: [], relativePath: '' });
+    expect(tree[0].id).toBe('empty');
   });
 
-  it('omits an empty root folder, even when unavailable (FR-11 literal)', () => {
+  it('shows an unavailable root with no stored files, flagged unavailable', () => {
     const tree = buildTree([folder('u', '/gone', true)], []);
-    expect(tree).toEqual([]);
+    expect(tree).toHaveLength(1);
+    expect(tree[0]).toMatchObject({ name: 'gone', unavailable: true, children: [] });
+  });
+
+  it('prunes non-root folders: only folders on a file path exist, at any depth', () => {
+    const f = [folder('a', '/r')];
+    // A file record with an empty relativePath and no name contributes no node.
+    const files = [
+      file('a', '/r', 'deep/er/est/x.jpg'),
+      file('a', '/r', 'top.jpg'),
+      { folderId: 'a', collectionId: 'c1', path: '/r/', relativePath: '', kind: 'image' },
+    ];
+    const tree = buildTree(f, files);
+    const folders = [];
+    (function walk(n) {
+      if (n.type === 'folder') folders.push(n.relativePath);
+      (n.children || []).forEach(walk);
+    })(tree[0]);
+    expect(folders).toEqual(['', 'deep', 'deep/er', 'deep/er/est']);
+    expect(names(tree[0])).toEqual(['deep', 'top.jpg']);
   });
 
   it('passes unavailable through and propagates it to files', () => {

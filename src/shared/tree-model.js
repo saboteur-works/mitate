@@ -37,12 +37,15 @@
  *     id?: string              // roots only: the folder record id
  *   }
  *
- * Empty root folders (decision): FR-11 says the tree shows only folders that
- * contain at least one supported file at any depth, and states no exception
- * for added (root) folders. buildTree follows it literally: a root folder with
- * no stored files is omitted, whether or not it is unavailable. An unavailable
- * root folder that still has stored files IS shown, flagged unavailable, with
- * all its files flagged unavailable.
+ * Root folders (user decision, overrides the literal FR-11 wording): every
+ * top-level (added) folder of the collection is ALWAYS in the tree, whether or
+ * not it has stored files and whether or not it is available. A root with no
+ * files appears with children: []; an unavailable root appears flagged
+ * unavailable (its stored files, if any, are shown flagged unavailable). The
+ * prune-empty rule applies only below the roots: a subfolder node exists only
+ * because some file's relativePath passes through it, so every non-root folder
+ * contains at least one supported file at any depth and empty subfolders are
+ * absent.
  *
  * Order: at each level subfolders come before files; each group is sorted by
  * name with a case-insensitive natural numeric order (IMG_2 before IMG_10).
@@ -127,15 +130,14 @@ function buildTree(folderRecords, fileRecords) {
   for (const f of folderRecords || []) {
     const root = makeFolder(baseName(f.path), f.path, '', f.unavailable === true);
     root.id = f.id;
-    roots.set(f.id, { root, byRel: new Map(), count: 0 });
+    roots.set(f.id, { root, byRel: new Map() });
   }
   for (const rec of fileRecords || []) {
     const entry = roots.get(rec.folderId);
-    if (entry && addFile(entry.root, rec, entry.byRel)) entry.count++;
+    if (entry) addFile(entry.root, rec, entry.byRel);
   }
   const result = [];
-  for (const { root, count } of roots.values()) {
-    if (count === 0) continue;
+  for (const { root } of roots.values()) {
     sortChildren(root);
     result.push(root);
   }
