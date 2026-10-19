@@ -21,7 +21,15 @@ This file records only what was measured.
 
 ## external
 
-not measured: no such volume available to this run; requires the user's hardware
+not measured.
+
+Attempt on 2026-10-19 against an external USB drive (APFS, mounted at `/Volumes/<drive>`; `diskutil info`: Removable Media, Volume Read-Only No, Locked No, Encrypted No, Owners Disabled; mount point mode `drwxrwxr-x`, owned by the running user):
+
+- `node tools/atime-measurement/measure.js /Volumes/<drive> --label external` failed with `EPERM: operation not permitted, mkdtemp '/Volumes/<drive>/atime-measure-XXXXXX'`. Nothing was created on the drive.
+- `ls /Volumes/<drive>` failed with `Operation not permitted`.
+- Both failed from Claude Code's shell outside its sandbox, and the measurement command also failed from the user's own Terminal.
+
+Why access was refused is not established. macOS privacy controls for removable volumes (System Settings → Privacy & Security → Files and Folders) are one candidate. Granting that access to the terminal app and re-running would show whether it is the cause.
 
 ## network
 
