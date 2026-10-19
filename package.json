@@ -1,0 +1,18 @@
+{
+  "name": "media-organizer",
+  "version": "0.1.0",
+  "description": "Media organizer: index a folder collection and browse its tree",
+  "private": true,
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "node --check src/main/main.js && node --check src/renderer/renderer.js",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "electron": "^44.9.0",
+    "vitest": "^5.0.5"
+  }
+}
