@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { test, expect, _electron: electron } = require('@playwright/test');
+const { APP_ENTRY } = require('../support/app-entry.js');
 const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tree.js');
 const { wrapHandler } = require('../support/ipc-wrap.js');
 
@@ -18,7 +19,7 @@ test('Create is disabled while a collection is being created; double-click creat
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-organizer-e2e-'));
   const tree = buildFixtureTree();
   const app = await electron.launch({
-    args: ['.', `--user-data-dir=${userDataDir}`],
+    args: [APP_ENTRY, `--user-data-dir=${userDataDir}`],
     cwd: path.join(__dirname, '..', '..'),
   });
   try {
@@ -80,7 +81,7 @@ test('creates a collection from picked folders; picker is directory-only; empty 
   const treeB = buildFixtureTree();
   const paths = [treeA.root, treeB.root];
   const app = await electron.launch({
-    args: ['.', `--user-data-dir=${userDataDir}`],
+    args: [APP_ENTRY, `--user-data-dir=${userDataDir}`],
     cwd: path.join(__dirname, '..', '..'),
   });
   try {

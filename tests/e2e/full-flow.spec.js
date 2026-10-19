@@ -18,12 +18,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { test, expect, _electron: electron } = require('@playwright/test');
+const { APP_ENTRY } = require('../support/app-entry.js');
 const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tree.js');
 const readonlyCheck = require('../../tools/readonly-check/index.js');
 
 async function launch(userDataDir, pickPaths) {
   const app = await electron.launch({
-    args: ['.', `--user-data-dir=${userDataDir}`],
+    args: [APP_ENTRY, `--user-data-dir=${userDataDir}`],
     cwd: path.join(__dirname, '..', '..'),
   });
   // Count every folder picker call; the stub returns the fixture root.

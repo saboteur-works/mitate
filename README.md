@@ -51,7 +51,9 @@ npm test            # Vitest unit tests (tests/unit/**/*.test.js)
 npm run test:e2e    # Playwright end-to-end tests (tests/e2e/*.spec.js)
 ```
 
-The end-to-end tests launch the Electron app, so they need to be able to start Electron (`npm run test:e2e` launches Electron). A restricted sandbox may block that, in which case run `npm run test:e2e` from an unrestricted terminal. The Playwright config runs with one worker.
+The end-to-end tests launch the Electron app, so they need to be able to start Electron. A restricted sandbox may block that, in which case run `npm run test:e2e` from an unrestricted terminal. The Playwright config runs with one worker.
+
+The tests launch the app through `tests/support/background-main.js`, which loads the real app with hidden windows and, on macOS, without a Dock icon, so a test run doesn't take over the screen or steal focus. To watch the windows while debugging a test, run `MO_E2E_VISIBLE=1 npm run test:e2e`.
 
 ## Repository layout
 

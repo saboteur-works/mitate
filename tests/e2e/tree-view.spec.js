@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { test, expect, _electron: electron } = require('@playwright/test');
+const { APP_ENTRY } = require('../support/app-entry.js');
 const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tree.js');
 const { wrapHandler } = require('../support/ipc-wrap.js');
 const { openStorage } = require('../../src/main/storage/index.js');
@@ -57,7 +58,7 @@ function seedCollection(userDataDir, name, folders, collectionId = 'col-1') {
 
 async function launch(userDataDir) {
   const app = await electron.launch({
-    args: ['.', `--user-data-dir=${userDataDir}`],
+    args: [APP_ENTRY, `--user-data-dir=${userDataDir}`],
     cwd: path.join(__dirname, '..', '..'),
   });
   const window = await app.firstWindow();
