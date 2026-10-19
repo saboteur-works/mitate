@@ -18,6 +18,12 @@
   const inFlight = new Set();
   let selectedId = null;
 
+  const messageOf = (err) => (err && err.message ? err.message : String(err));
+
+  function fail(message) {
+    status.textContent = `Rescan failed: ${message}`;
+  }
+
   function syncButton() {
     button.disabled = selectedId === null || inFlight.has(selectedId);
   }
@@ -37,15 +43,12 @@
     try {
       const result = await api.rescanCollection(id);
       if (selectedId !== id) return;
-      if (!result.ok) {
-        status.textContent = `Rescan failed: ${result.error}`;
-        return;
-      }
+      if (!result.ok) return fail(result.error);
       window.TreeView.update(result.view.folders, result.view.files);
       const { rescanned, skipped } = result.summary;
       status.textContent = `Rescanned ${rescanned.length} folders, skipped ${skipped.length}`;
     } catch (err) {
-      if (selectedId === id) status.textContent = `Rescan failed: ${err && err.message ? err.message : String(err)}`;
+      if (selectedId === id) fail(messageOf(err));
     } finally {
       inFlight.delete(id);
       syncButton();

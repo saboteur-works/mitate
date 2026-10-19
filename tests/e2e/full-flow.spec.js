@@ -15,33 +15,17 @@
  */
 
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
-const { test, expect, _electron: electron } = require('@playwright/test');
-const { APP_ENTRY } = require('../support/app-entry.js');
+const { test, expect } = require('@playwright/test');
+const { newUserDataDir, launchApp, rowAt, stubFolderPicker } = require('../support/e2e-app.js');
 const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tree.js');
 const readonlyCheck = require('../../tools/readonly-check/index.js');
 
+// Launches the app with the folder picker stubbed to return pickPaths and count its calls.
 async function launch(userDataDir, pickPaths) {
-  const app = await electron.launch({
-    args: [APP_ENTRY, `--user-data-dir=${userDataDir}`],
-    cwd: path.join(__dirname, '..', '..'),
-  });
-  // Count every folder picker call; the stub returns the fixture root.
-  await app.evaluate(({ dialog }, folderPaths) => {
-    globalThis.__dialogCalls = 0;
-    dialog.showOpenDialog = async () => {
-      globalThis.__dialogCalls += 1;
-      return { canceled: false, filePaths: folderPaths };
-    };
-  }, pickPaths);
-  const window = await app.firstWindow();
-  await window.waitForLoadState('domcontentloaded');
-  return { app, window };
+  const session = await launchApp(userDataDir);
+  return { ...session, picker: await stubFolderPicker(session.app, pickPaths) };
 }
-
-const rowAt = (window, p) => window.locator(`[data-testid="tree-row"][data-path="${p}"]`);
-const dialogCalls = (app) => app.evaluate(() => globalThis.__dialogCalls);
 
 // atimeNs may be a BigInt, which JSON.stringify cannot serialize.
 const toJson = (value) => JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2);
@@ -57,7 +41,7 @@ async function browse(window, root) {
 
 test('create, browse, quit and relaunch leave the fixture tree unchanged and need no folder picker on relaunch', async () => {
   test.setTimeout(120000);
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-organizer-fullflow-e2e-'));
+  const userDataDir = newUserDataDir('fullflow-e2e');
   const fixture = buildFixtureTree();
   const root = fixture.root;
   let session;
@@ -69,7 +53,7 @@ test('create, browse, quit and relaunch leave the fixture tree unchanged and nee
 
     // Session 1: create through the UI and browse.
     session = await launch(userDataDir, [root]);
-    let { app, window } = session;
+    let { app, window, picker } = session;
     await expect(window.getByTestId('collection-item')).toHaveCount(0);
     await window.getByTestId('add-folder').click();
     await expect(window.getByTestId('folder-item')).toHaveCount(1);
@@ -78,7 +62,7 @@ test('create, browse, quit and relaunch leave the fixture tree unchanged and nee
     await window.getByTestId('create-collection').click();
     await expect(window.getByTestId('collection-item')).toHaveCount(1, { timeout: 60000 });
     await expect(window.getByTestId('collection-name-label')).toHaveText('Full flow');
-    expect(await dialogCalls(app)).toBe(1);
+    expect(await picker.calls()).toBe(1);
     await window.getByTestId('collection-item').click();
     await expect(rowAt(window, root)).toHaveCount(1, { timeout: 30000 });
     await browse(window, root);
@@ -87,7 +71,7 @@ test('create, browse, quit and relaunch leave the fixture tree unchanged and nee
 
     // Session 2: same user data dir; stored collection and tree, no picker.
     session = await launch(userDataDir, [root]);
-    ({ app, window } = session);
+    ({ app, window, picker } = session);
     await expect(window.getByTestId('collection-item')).toHaveCount(1, { timeout: 30000 });
     await expect(window.getByTestId('collection-name-label')).toHaveText('Full flow');
     await expect(window.getByTestId('folder-item')).toHaveCount(0);
@@ -96,7 +80,7 @@ test('create, browse, quit and relaunch leave the fixture tree unchanged and nee
     await browse(window, root);
     await expect(window.getByTestId('unavailable')).toHaveCount(0);
     // The picker stub counter is per launch: 0 means Add folder was never invoked.
-    expect(await dialogCalls(app)).toBe(0);
+    expect(await picker.calls()).toBe(0);
     await app.close();
     session = null;
 

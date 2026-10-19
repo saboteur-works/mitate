@@ -11,6 +11,8 @@
 
   let folders = [];
 
+  const messageOf = (err) => (err && err.message ? err.message : String(err));
+
   function showError(message) {
     errorBox.textContent = message;
     errorBox.hidden = !message;
@@ -102,7 +104,7 @@
       renderFolders();
       await refreshCollections();
     } catch (err) {
-      showError(err && err.message ? err.message : String(err));
+      showError(messageOf(err));
     } finally {
       creating = false;
       createButton.disabled = false;

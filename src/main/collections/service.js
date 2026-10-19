@@ -13,11 +13,14 @@
  *
  *   createCollection(name, directories) -> Promise<{collection, folders, files}>
  *   loadCollections()                   -> Promise<Array<{collection, folders, files}>>
+ *                                          (listCollectionSummaries, then a view per collection)
  *   listCollectionSummaries()           -> Promise<Array<{id, name, folderCount,
  *                                          folders: [{id, path, unavailable}]}>>
  *                                          (no file records; index not read)
  *   getCollectionView(collectionId)     -> {collection, folders, files} | null
  *                                          (files read per folder, in folder order)
+ *   collectionView(storage, collectionId)  (exported) the pure function behind
+ *                                          getCollectionView; rescan.js uses it too
  *
  * Decisions:
  * - Validation happens before anything is scanned or stored: name must be
@@ -31,14 +34,15 @@
  *   by realpath). The service only reads collection folders (stat, opendir,
  *   scan); it never writes there.
  * - FR-1 / OQ-10 at creation: each folder must pass the readability check
- *   (a directory that can be opened for listing; see isReadableDirectory), or
+ *   (a directory that can be opened for listing; see folder-access.js), or
  *   creation is rejected with an error naming the folder and the error code
  *   and nothing is stored. A folder that passes it but whose scan then fails
  *   (e.g. the drive disconnects mid-scan) is stored with unavailable: true
  *   and an empty index (FR-4).
- * - loadCollections never scans and never shows a picker (FR-3). Each folder
- *   gets the readability check; flags that differ from the stored ones are
- *   persisted in one storage.transaction (one write, FR-18).
+ * - loadCollections and listCollectionSummaries never scan and never show a
+ *   picker (FR-3). Every folder of every collection gets the readability check
+ *   (concurrently); flags that differ from the stored ones are persisted in
+ *   one storage.transaction (one write, FR-18).
  *   Folder records and indexed files are never removed.
  * - The file-level `unavailable` flag is DERIVED, not persisted: returned
  *   file records carry unavailable: true when their folder is unavailable, and
@@ -49,35 +53,14 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-
-function defaultScan(folderPath) {
-  return require('../discovery/run-scan.js').runScan(folderPath);
-}
+const { defaultScan, checkReadableDirectory, isReadableDirectory, scanFolder } = require('./folder-access.js');
 
 async function assertDirectory(dir) {
   if (typeof dir !== 'string' || !path.isAbsolute(dir)) {
     throw new Error(`Folder path must be an absolute path: ${String(dir)}`);
   }
-  let stat;
-  try {
-    stat = await fs.promises.stat(dir);
-  } catch (err) {
-    throw new Error(`Folder does not exist or cannot be read: ${dir} (${err.code || err.message})`);
-  }
-  if (!stat.isDirectory()) throw new Error(`Not a directory: ${dir}`);
-  try {
-    await openForListing(dir);
-  } catch (err) {
-    throw new Error(`Folder does not exist or cannot be read: ${dir} (${err.code || err.message})`);
-  }
-}
-
-// Opens the directory for listing and closes it without reading any entry.
-// This is the operation that failed with EPERM on a measured external drive
-// (docs/measurements/atime-cat-read.md) and with EACCES on a mode-000 folder.
-async function openForListing(dir) {
-  const handle = await fs.promises.opendir(dir);
-  await handle.close();
+  const problem = await checkReadableDirectory(dir);
+  if (problem) throw new Error(problem.message);
 }
 
 async function realOrSelf(p) {
@@ -107,29 +90,23 @@ function contains(dir, file) {
   return !outside;
 }
 
-async function isReadableDirectory(dir) {
-  try {
-    const stat = await fs.promises.stat(dir);
-    if (!stat.isDirectory()) return false;
-    await openForListing(dir);
-    return true;
-  } catch {
-    return false;
-  }
+// The stored view of one collection, or null when it does not exist. File
+// records of an unavailable folder carry unavailable: true; the flag is
+// derived from the folder record, never read from the stored file record.
+function collectionView(storage, collectionId) {
+  const collection = storage.getCollection(collectionId);
+  if (!collection) return null;
+  const folders = storage.listFolders(collectionId);
+  const files = folders.flatMap((folder) =>
+    storage.getIndex({ folderId: folder.id }).map((f) => {
+      const { unavailable, ...rest } = f;
+      return folder.unavailable ? { ...rest, unavailable: true } : rest;
+    }));
+  return { collection, folders, files };
 }
 
 function createCollectionService({ storage, scan = defaultScan, idGenerator = crypto.randomUUID } = {}) {
   if (!storage) throw new Error('storage is required');
-
-  function view(collection) {
-    const folders = storage.listFolders(collection.id);
-    const files = folders.flatMap((folder) =>
-      storage.getIndex({ folderId: folder.id }).map((f) => {
-        const { unavailable, ...rest } = f;
-        return folder.unavailable ? { ...rest, unavailable: true } : rest;
-      }));
-    return { collection, folders, files };
-  }
 
   async function validate(name, directories) {
     if (typeof name !== 'string' || name.trim() === '') throw new Error('Collection name must not be empty');
@@ -151,19 +128,11 @@ function createCollectionService({ storage, scan = defaultScan, idGenerator = cr
     return { name: name.trim(), dirs: unique };
   }
 
-  async function scanOne(dir) {
-    try {
-      return { records: await scan(dir), unavailable: false };
-    } catch {
-      return { records: [], unavailable: true };
-    }
-  }
-
   async function createCollection(name, directories) {
     const { name: cleanName, dirs } = await validate(name, directories);
     const collectionId = idGenerator();
     const scanned = [];
-    for (const dir of dirs) scanned.push({ id: idGenerator(), dir, ...(await scanOne(dir)) });
+    for (const dir of dirs) scanned.push({ id: idGenerator(), dir, ...(await scanFolder(scan, dir)) });
 
     // All awaits are done; apply every record in one synchronous transaction so
     // the store is written once (FR-18) and a failure leaves nothing behind.
@@ -179,52 +148,46 @@ function createCollectionService({ storage, scan = defaultScan, idGenerator = cr
         storage.replaceFolderIndex(s.id, s.records);
       }
     });
-    return view(storage.getCollection(collectionId));
+    return collectionView(storage, collectionId);
   }
 
-  async function refreshAccessibility(collectionId) {
-    const changes = [];
-    for (const folder of storage.listFolders(collectionId)) {
-      const ok = await isReadableDirectory(folder.path);
-      if (folder.unavailable === ok) changes.push({ id: folder.id, unavailable: !ok });
-    }
+  // Checks every folder of every collection concurrently, then applies all
+  // flag changes in one transaction (one write, FR-18).
+  async function refreshAccessibility(collections) {
+    const folders = collections.flatMap((c) => storage.listFolders(c.id));
+    const checked = await Promise.all(
+      folders.map(async (folder) => ({ folder, ok: await isReadableDirectory(folder.path) })));
+    const changes = checked.filter(({ folder, ok }) => folder.unavailable === ok);
     if (changes.length === 0) return;
     storage.transaction(() => {
-      for (const c of changes) storage.setFolderUnavailable(c.id, c.unavailable);
+      for (const { folder, ok } of changes) storage.setFolderUnavailable(folder.id, !ok);
     });
   }
 
-  async function loadCollections() {
-    const result = [];
-    for (const collection of storage.listCollections()) {
-      await refreshAccessibility(collection.id);
-      result.push(view(collection));
-    }
-    return result;
-  }
-
   // Summaries for the collection list: no file records, and the index is not
-  // read. Runs the same accessibility check as loadCollections.
+  // read. Runs the accessibility check first.
   async function listCollectionSummaries() {
-    const result = [];
-    for (const collection of storage.listCollections()) {
-      await refreshAccessibility(collection.id);
+    const collections = storage.listCollections();
+    await refreshAccessibility(collections);
+    return collections.map((collection) => {
       const folders = storage.listFolders(collection.id).map(({ id, path: folderPath, unavailable }) => ({
         id,
         path: folderPath,
         unavailable,
       }));
-      result.push({ id: collection.id, name: collection.name, folderCount: folders.length, folders });
-    }
-    return result;
+      return { id: collection.id, name: collection.name, folderCount: folders.length, folders };
+    });
+  }
+
+  async function loadCollections() {
+    return (await listCollectionSummaries()).map((s) => getCollectionView(s.id));
   }
 
   function getCollectionView(collectionId) {
-    const collection = storage.getCollection(collectionId);
-    return collection ? view(collection) : null;
+    return collectionView(storage, collectionId);
   }
 
   return { createCollection, loadCollections, listCollectionSummaries, getCollectionView };
 }
 
-module.exports = { createCollectionService, defaultScan, isReadableDirectory };
+module.exports = { createCollectionService, collectionView };

@@ -13,7 +13,8 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync, spawnSync } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
+const { stats, sh, electronVersion, filesystemOf } = require('../lib/env.js');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const RESULT_FILE = path.join(ROOT, 'docs', 'measurements', 'scan-speed.md');
@@ -70,24 +71,6 @@ function parseArgs(argv) {
   return opts;
 }
 
-function sh(cmd, args) {
-  try {
-    return execFileSync(cmd, args, { encoding: 'utf8' }).trim();
-  } catch (err) {
-    return `not available: ${err.message.split('\n')[0]}`;
-  }
-}
-
-function electronVersion() {
-  const installed = path.join(ROOT, 'node_modules', 'electron', 'package.json');
-  if (fs.existsSync(installed)) {
-    return `${JSON.parse(fs.readFileSync(installed, 'utf8')).version} (node_modules/electron/package.json)`;
-  }
-  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-  const range = (pkg.devDependencies && pkg.devDependencies.electron) || (pkg.dependencies && pkg.dependencies.electron);
-  return `node_modules/electron not present; package.json declares "${range}"`;
-}
-
 function machine() {
   const mem = sh('sysctl', ['-n', 'hw.memsize']);
   return {
@@ -98,14 +81,6 @@ function machine() {
     node: process.version,
     electron: electronVersion(),
   };
-}
-
-function filesystemOf(dir) {
-  const df = sh('df', ['-P', dir]).split('\n');
-  const device = (df[df.length - 1] || '').split(/\s+/)[0];
-  const mounts = sh('mount', []).split('\n');
-  const line = mounts.find((l) => device && l.startsWith(`${device} on `));
-  return { df: df.join(' | '), mount: line || `no mount line starting with "${device} on "` };
 }
 
 function timeBinaryWorks() {
@@ -132,13 +107,6 @@ function oneRun(folder, useTime) {
     data.timePeakRss = m ? Number(m[1]) : null;
   }
   return data;
-}
-
-function stats(values) {
-  const s = [...values].sort((a, b) => a - b);
-  const mid = s.length >> 1;
-  const median = s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
-  return { min: s[0], median, max: s[s.length - 1] };
 }
 
 function measureTree(label, folder, runs, useTime, extra) {

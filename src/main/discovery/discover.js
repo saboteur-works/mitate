@@ -28,17 +28,19 @@ const path = require('node:path');
 const { lookupFileName } = require('../registry/types.js');
 const { isPackageName } = require('./packages.js');
 
-/** Decide what to do with a directory entry: 'file', 'dir' or null (skip). */
+/**
+ * Decide what to do with a directory entry: 'dir', the registry entry of a
+ * recognized file (one lookup per file), or null (skip).
+ */
 function classify(entry) {
   if (entry.name.startsWith('.')) return null;
   if (entry.isSymbolicLink()) return null;
   if (entry.isDirectory()) return isPackageName(entry.name) ? null : 'dir';
-  if (entry.isFile()) return lookupFileName(entry.name) ? 'file' : null;
+  if (entry.isFile()) return lookupFileName(entry.name) || null;
   return null;
 }
 
-function makeRecord(absPath, relativePath, name) {
-  const info = lookupFileName(name);
+function makeRecord(absPath, relativePath, name, info) {
   const record = {
     path: absPath,
     relativePath,
@@ -75,12 +77,12 @@ function discoverSync(folderPath, options = {}) {
       return;
     }
     for (const entry of entries) {
-      const kind = classify(entry);
-      if (!kind) continue;
+      const found = classify(entry);
+      if (!found) continue;
       const abs = path.join(dir, entry.name);
       const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
-      if (kind === 'dir') walk(abs, entryRel, false);
-      else records.push(makeRecord(abs, entryRel, entry.name));
+      if (found === 'dir') walk(abs, entryRel, false);
+      else records.push(makeRecord(abs, entryRel, entry.name, found));
     }
   };
   walk(root, '', true);

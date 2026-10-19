@@ -5,7 +5,7 @@ This file records only what was measured.
 
 ## Environment
 
-- date: 2026-10-19T17:16:45.039Z
+- date: 2026-10-19T18:47:31.982Z
 - machine model: Mac16,8 (sysctl -n hw.model)
 - CPU: Apple M4 Pro (sysctl -n machdep.cpu.brand_string)
 - logical CPUs (os.cpus().length): 12
@@ -15,12 +15,12 @@ This file records only what was measured.
 - Electron version: 44.9.0 (node_modules/electron/package.json)
 - The script runs under plain Node, not inside Electron.
 - temporary storage location: a directory created with fs.mkdtempSync under os.tmpdir() (/var/folders/qk/x8z53mfn36q33gbbzrhmpws00000gn/T), outside any collection folder, removed after each size
-- total script elapsed time: 6.2 s
+- total script elapsed time: 8.3 s
 
 ## Method
 
 - Module measured: src/main/storage/index.js (openStorage, transaction, setFolderUnavailable), called in-process.
-- FileRecord shape: folderId, collectionId (set by replaceFolderIndex), path (absolute), relativePath, name, extension, kind; subtype ("raw") on every fifth image record; unavailable (false) on every 1000th record.
+- FileRecord shape: folderId, collectionId (set by replaceFolderIndex), path (absolute), relativePath, name, extension, kind; subtype ("RAW" on the cr2 records). Extension, kind and subtype are taken from the supported-type registry, as discovery produces them.
 - Generated paths: `/Volumes/Media/Collection/Folder<n>/<year 2015-2024>/<month 01-12>/event-<0-199>/IMG_<7-digit index>.<ext>`; extensions jpg, png, cr2, mp4, mov, wav, pdf, txt. The files do not exist on disk.
 - Population: one collection, 5 folders, records split evenly across the folders (remainder in the last), written in a single storage.transaction.
 - store.json size: fs.statSync size in bytes after population.
@@ -35,9 +35,9 @@ This file records only what was measured.
 
 | size (file records) | store.json bytes | populate ms (single run) | process.memoryUsage().rss after the size (bytes) |
 |---|---|---|---|
-| 50000 | 11206689 | 62.67 | 276643840 |
-| 200000 | 44824689 | 212.56 | 804470784 |
-| 500000 | 112060689 | 567.98 | 1510850560 |
+| 50000 | 11283189 | 59.08 | 287064064 |
+| 200000 | 45130689 | 219.09 | 632799232 |
+| 500000 | 112825689 | 552.46 | 1044119552 |
 
 ### Load
 
@@ -45,9 +45,9 @@ This file records only what was measured.
 
 | size | runs (ms, in order) | min ms | median ms | max ms |
 |---|---|---|---|---|
-| 50000 | 16.80, 18.20, 18.91, 16.21, 16.28 | 16.21 | 16.80 | 18.91 |
-| 200000 | 76.45, 66.64, 79.41, 63.23, 65.39 | 63.23 | 66.64 | 79.41 |
-| 500000 | 173.50, 196.52, 164.85, 171.71, 171.91 | 164.85 | 171.91 | 196.52 |
+| 50000 | 23.89, 22.51, 18.91, 22.85, 17.58 | 17.58 | 22.51 | 23.89 |
+| 200000 | 89.94, 81.10, 77.91, 87.46, 84.67 | 77.91 | 84.67 | 89.94 |
+| 500000 | 236.03, 296.40, 224.41, 221.95, 223.40 | 221.95 | 224.41 | 296.40 |
 
 ### Save
 
@@ -55,9 +55,9 @@ One `setFolderUnavailable("f0", false)` call (one full-state write).
 
 | size | runs (ms, in order) | min ms | median ms | max ms |
 |---|---|---|---|---|
-| 50000 | 13.76, 13.08, 14.07, 13.09, 12.07 | 12.07 | 13.09 | 14.07 |
-| 200000 | 58.80, 68.49, 55.17, 53.10, 56.63 | 53.10 | 56.63 | 68.49 |
-| 500000 | 130.96, 106.32, 103.89, 109.83, 148.07 | 103.89 | 109.83 | 148.07 |
+| 50000 | 16.07, 13.40, 14.34, 13.85, 12.01 | 12.01 | 13.85 | 16.07 |
+| 200000 | 53.54, 64.80, 64.35, 54.05, 101.84 | 53.54 | 64.35 | 101.84 |
+| 500000 | 124.39, 119.42, 135.22, 175.94, 185.75 | 119.42 | 135.22 | 185.75 |
 
 ### Transaction commit
 
@@ -65,6 +65,6 @@ One `transaction` call with 4 mutations (one full-state write).
 
 | size | runs (ms, in order) | min ms | median ms | max ms |
 |---|---|---|---|---|
-| 50000 | 36.36, 36.88, 37.18, 36.30, 34.39 | 34.39 | 36.36 | 37.18 |
-| 200000 | 155.09, 156.25, 148.00, 160.32, 155.47 | 148.00 | 155.47 | 160.32 |
-| 500000 | 407.52, 365.39, 358.38, 373.92, 368.61 | 358.38 | 368.61 | 407.52 |
+| 50000 | 41.98, 38.12, 44.65, 40.33, 36.81 | 36.81 | 40.33 | 44.65 |
+| 200000 | 202.38, 211.44, 235.04, 209.39, 207.53 | 202.38 | 209.39 | 235.04 |
+| 500000 | 532.46, 818.62, 575.91, 447.53, 548.99 | 447.53 | 548.99 | 818.62 |

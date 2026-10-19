@@ -23,7 +23,8 @@
  *   their files) shows a visible "unavailable" label; nothing is hidden.
  *
  * API: window.TreeView.show(folders, files) replaces the displayed collection
- * (folders/files as returned by the collections view); TreeView.clear().
+ * (folders/files as returned by the collections view); TreeView.update(folders, files)
+ * replaces them keeping the expanded folders.
  */
 (function () {
   const ROW_HEIGHT = 24;
@@ -119,5 +120,5 @@
   container.addEventListener('scroll', renderWindow);
   container.setAttribute('role', 'tree');
 
-  window.TreeView = { show, update, clear: () => show([], []) };
+  window.TreeView = { show, update };
 })();

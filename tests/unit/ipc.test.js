@@ -15,7 +15,7 @@ function setup({ dialogResult = { canceled: false, filePaths: ['/a', '/b'] }, se
     },
   };
   const svc = service || {
-    createCollection: async (name, dirs) => ({ collection: { name }, folders: dirs.map((d) => ({ path: d })), files: [] }),
+    createCollection: async (name, dirs) => ({ collection: { id: `id-${name}`, name }, folders: dirs.map((d) => ({ path: d })), files: [] }),
     listCollectionSummaries: async () => [],
   };
   registerIpc({ ipcMain, dialog, service: svc, rescanService });
@@ -41,7 +41,7 @@ describe('registerIpc', () => {
     const { invoke } = setup();
     const created = await invoke(CHANNELS.createCollection, 'N', ['/a']);
     expect(created.ok).toBe(true);
-    expect(created.view.collection.name).toBe('N');
+    expect(created.summary).toEqual({ id: 'id-N', name: 'N', folderCount: 1 });
     expect(await invoke(CHANNELS.listCollections)).toEqual({ ok: true, summaries: [] });
   });
 
@@ -85,7 +85,7 @@ describe('registerIpc', () => {
     expect((await setup().invoke(CHANNELS.rescanCollection, 'x')).ok).toBe(false);
   });
 
-  it('maps a concurrent-rescan rejection to { ok: false, error, busy: true }', async () => {
+  it('carries the error code of a concurrent-rescan rejection', async () => {
     const busy = {
       rescanCollection: async () => {
         throw Object.assign(new Error('already running'), { code: 'RESCAN_IN_PROGRESS' });
@@ -94,38 +94,7 @@ describe('registerIpc', () => {
     expect(await setup({ rescanService: busy }).invoke(CHANNELS.rescanCollection, 'x')).toEqual({
       ok: false,
       error: 'already running',
-      busy: true,
+      code: 'RESCAN_IN_PROGRESS',
     });
-  });
-});
-
-describe('getRegisteredHandler', () => {
-  it('returns the registered handler for each channel, giving the same result as invoking the channel', async () => {
-    const { getRegisteredHandler } = require('../../src/main/ipc.js');
-    const view = { collection: { id: 'c1' }, folders: [], files: [] };
-    const service = {
-      createCollection: async (name) => ({ collection: { name }, folders: [], files: [] }),
-      listCollectionSummaries: async () => [],
-      getCollectionView: () => view,
-    };
-    const rescanService = { rescanCollection: async () => ({ ...view, summary: { added: 0 } }) };
-    const { invoke } = setup({ service, rescanService });
-    const args = {
-      [CHANNELS.pickFolders]: [],
-      [CHANNELS.createCollection]: ['N', ['/a']],
-      [CHANNELS.listCollections]: [],
-      [CHANNELS.getCollectionView]: ['c1'],
-      [CHANNELS.rescanCollection]: ['c1'],
-    };
-    for (const channel of Object.values(CHANNELS)) {
-      const handler = getRegisteredHandler(channel);
-      expect(typeof handler, channel).toBe('function');
-      expect(await handler({}, ...args[channel]), channel).toEqual(await invoke(channel, ...args[channel]));
-    }
-  });
-
-  it('returns undefined for a channel that was never registered', () => {
-    const { getRegisteredHandler } = require('../../src/main/ipc.js');
-    expect(getRegisteredHandler('nope:nothing')).toBeUndefined();
   });
 });

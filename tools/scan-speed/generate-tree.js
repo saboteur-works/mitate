@@ -13,24 +13,26 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { lookupExtension } = require('../../src/main/registry/types.js');
 
 const TOP_DIRS = 20;
 const MID_DIRS = 10;
 const LEAF_DIRS = 10;
 const LEAF_TOTAL = TOP_DIRS * MID_DIRS * LEAF_DIRS;
 
-// [extension, number of slots out of 100, listed in the supported-type registry]
+// [extension, number of slots out of 100]; whether an extension is supported is
+// decided by the supported-type registry.
 const MIX = [
-  ['jpg', 70, true],
-  ['png', 10, true],
-  ['cr2', 5, true],
-  ['mp4', 5, true],
-  ['mp3', 4, true],
-  ['pdf', 2, true],
-  ['xyz', 2, false],
-  ['tmp', 1, false],
-  ['log', 1, false],
-];
+  ['jpg', 70],
+  ['png', 10],
+  ['cr2', 5],
+  ['mp4', 5],
+  ['mp3', 4],
+  ['pdf', 2],
+  ['xyz', 2],
+  ['tmp', 1],
+  ['log', 1],
+].map(([ext, n]) => [ext, n, lookupExtension(ext) !== undefined]);
 
 const SLOTS = [];
 for (const [ext, n, supported] of MIX) for (let k = 0; k < n; k++) SLOTS.push([ext, supported]);

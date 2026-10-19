@@ -21,16 +21,16 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
 const { openStorage } = require('../../src/main/storage');
+const { lookupExtension } = require('../../src/main/registry/types.js');
+const { stats, sh, electronVersion } = require('../lib/env.js');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DOC = path.join(ROOT, 'docs', 'measurements', 'json-store-scale.md');
 const FOLDER_COUNT = 5;
-const KINDS = [
-  ['jpg', 'image'], ['png', 'image'], ['cr2', 'image'], ['mp4', 'video'],
-  ['mov', 'video'], ['wav', 'audio'], ['pdf', 'other'], ['txt', 'other'],
-];
+// Extensions of the generated records; kind and subtype come from the registry,
+// as discovery produces them.
+const EXTENSIONS = ['jpg', 'png', 'cr2', 'mp4', 'mov', 'wav', 'pdf', 'txt'];
 
 function parseArgs(argv) {
   const out = { sizes: [50000, 200000, 500000], runs: 5 };
@@ -52,14 +52,13 @@ function makeRecords(count, folderN) {
   const base = folderRoot(folderN);
   const records = new Array(count);
   for (let i = 0; i < count; i += 1) {
-    const [ext, kind] = KINDS[(i * 7 + folderN) % KINDS.length];
+    const { extension: ext, kind, subtype } = lookupExtension(EXTENSIONS[(i * 7 + folderN) % EXTENSIONS.length]);
     const name = `IMG_${String(i).padStart(7, '0')}.${ext}`;
     const relativePath = `${2015 + (i % 10)}/${String(1 + (i % 12)).padStart(2, '0')}/event-${i % 200}/${name}`;
     const rec = {
       path: `${base}/${relativePath}`, relativePath, name, extension: ext, kind,
     };
-    if (kind === 'image' && i % 5 === 0) rec.subtype = 'raw';
-    if (i % 1000 === 0) rec.unavailable = false;
+    if (subtype) rec.subtype = subtype;
     records[i] = rec;
   }
   return records;
@@ -85,13 +84,6 @@ function timeMs(fn) {
   const t0 = process.hrtime.bigint();
   fn();
   return Number(process.hrtime.bigint() - t0) / 1e6;
-}
-
-function stats(values) {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = sorted.length >> 1;
-  const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-  return { min: sorted[0], median, max: sorted[sorted.length - 1] };
 }
 
 function measureSize(size, runs) {
@@ -120,26 +112,9 @@ function measureSize(size, runs) {
   }
 }
 
-function sh(cmd, args) {
-  try {
-    return execFileSync(cmd, args, { encoding: 'utf8' }).trim();
-  } catch (err) {
-    return `unavailable (${err.message.split('\n')[0]})`;
-  }
-}
-
 function withFallback(label, value, fallback) {
   if (!value.startsWith('unavailable')) return `${value} (${label})`;
   return `${label} failed to run in this environment; ${fallback}`;
-}
-
-function electronVersion() {
-  try {
-    return `${require(path.join(ROOT, 'node_modules', 'electron', 'package.json')).version} (node_modules/electron/package.json)`;
-  } catch (err) {
-    const dep = require(path.join(ROOT, 'package.json')).devDependencies || {};
-    return `${dep.electron} (package.json devDependencies range; node_modules/electron not installed)`;
-  }
 }
 
 const fmt = (n) => n.toFixed(2);
@@ -180,7 +155,7 @@ function render(opts, results, elapsedS) {
     '## Method',
     '',
     '- Module measured: src/main/storage/index.js (openStorage, transaction, setFolderUnavailable), called in-process.',
-    '- FileRecord shape: folderId, collectionId (set by replaceFolderIndex), path (absolute), relativePath, name, extension, kind; subtype ("raw") on every fifth image record; unavailable (false) on every 1000th record.',
+    '- FileRecord shape: folderId, collectionId (set by replaceFolderIndex), path (absolute), relativePath, name, extension, kind; subtype ("RAW" on the cr2 records). Extension, kind and subtype are taken from the supported-type registry, as discovery produces them.',
     '- Generated paths: `/Volumes/Media/Collection/Folder<n>/<year 2015-2024>/<month 01-12>/event-<0-199>/IMG_<7-digit index>.<ext>`; extensions jpg, png, cr2, mp4, mov, wav, pdf, txt. The files do not exist on disk.',
     `- Population: one collection, ${FOLDER_COUNT} folders, records split evenly across the folders (remainder in the last), written in a single storage.transaction.`,
     '- store.json size: fs.statSync size in bytes after population.',

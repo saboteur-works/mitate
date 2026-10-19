@@ -4,9 +4,9 @@
 // Usage: node tools/atime-measurement/measure.js <volume-path> --label <internal-apfs|external|network>
 
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
-const { execFileSync, spawnSync } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
+const { filesystemOf } = require('../lib/env.js');
 
 const LABELS = ['internal-apfs', 'external', 'network'];
 const WAIT_MS = 1100;
@@ -51,24 +51,6 @@ function iso(ns) {
   return new Date(Number(ms)).toISOString().replace(/\.\d{3}Z$/, `.${rem}Z`);
 }
 
-function run(cmd, args) {
-  try {
-    return execFileSync(cmd, args, { encoding: 'utf8' }).trim();
-  } catch (e) {
-    return `(${cmd} failed: ${e.message.split('\n')[0]})`;
-  }
-}
-
-function filesystemInfo(dir) {
-  const df = run('df', ['-P', dir]).split('\n');
-  const device = (df[1] || '').split(/\s+/)[0];
-  const mountLines = run('mount', []).split('\n').filter((l) => device && l.startsWith(`${device} on `));
-  return {
-    df: df.join(' | '),
-    mount: mountLines.join(' | ') || '(no matching mount line)',
-  };
-}
-
 function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -78,7 +60,7 @@ function measure(volume) {
   try {
     const file = path.join(dir, 'fixture.txt');
     fs.writeFileSync(file, 'atime measurement fixture\n'.repeat(64));
-    const fsInfo = filesystemInfo(dir);
+    const fsInfo = filesystemOf(dir);
     sleep(WAIT_MS);
     const before = fs.statSync(file, { bigint: true }).atimeNs;
     const r = spawnSync('cat', [file], { stdio: ['ignore', 'ignore', 'pipe'] });

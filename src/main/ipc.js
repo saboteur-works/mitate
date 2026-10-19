@@ -6,7 +6,8 @@
  *
  *   folders:pick        -> { canceled, paths }   native folder picker; directories
  *                          only (openDirectory + multiSelections, never openFile)
- *   collections:create  (name, directories) -> { ok: true, view } | { ok: false, error }
+ *   collections:create  (name, directories) -> { ok: true, summary: { id, name, folderCount } }
+ *                          | { ok: false, error }; the tree is loaded by collections:getView
  *   collections:list    -> { ok: true, summaries } | { ok: false, error }
  *                          summaries = [{ id, name, folderCount,
  *                          folders: [{ id, path, unavailable }] }]; no file records
@@ -18,22 +19,14 @@
  *                          user-triggered rescan (FR-20); needs rescanService, else
  *                          { ok: false, error }. Never invoked on launch.
  *                          A rescan already running for the same collection gives
- *                          { ok: false, error, busy: true } (error code
- *                          RESCAN_IN_PROGRESS from the rescan service).
+ *                          { ok: false, error, code: 'RESCAN_IN_PROGRESS' }.
  *
- * getRegisteredHandler(channel) -> the handler function registerIpc registered for
- *                          that channel, or undefined. The module keeps a registry of
- *                          the original handlers (last registerIpc call wins); it is
- *                          not changed when a channel is later re-registered with
- *                          ipcMain.removeHandler/handle, so the original stays
- *                          reachable for wrapping or delegation. Handlers have the
- *                          signature (event, ...args).
- *
- * Service errors are returned as { ok: false, error } so the renderer can show
- * the message without Electron's "Error invoking remote method" prefix.
+ * Service errors are returned as { ok: false, error } (plus code when the error
+ * has one) so the renderer can show the message without Electron's "Error
+ * invoking remote method" prefix.
  */
 
-const { RESCAN_IN_PROGRESS } = require('./collections/rescan.js');
+const { messageOf } = require('./message-of.js');
 
 const CHANNELS = {
   pickFolders: 'folders:pick',
@@ -43,33 +36,23 @@ const CHANNELS = {
   rescanCollection: 'collections:rescan',
 };
 
-const registered = new Map();
-
-function getRegisteredHandler(channel) {
-  return registered.get(channel);
-}
-
 const PICKER_PROPERTIES = ['openDirectory', 'multiSelections'];
 
 function registerIpc({ ipcMain, dialog, service, rescanService = null, getWindow = () => null }) {
-  registered.clear();
-  function handle(channel, fn) {
-    registered.set(channel, fn);
-    ipcMain.handle(channel, fn);
-  }
+  const handle = (channel, fn) => ipcMain.handle(channel, fn);
 
   async function guard(fn) {
     try {
       return { ok: true, ...(await fn()) };
     } catch (err) {
-      const failure = { ok: false, error: err && err.message ? err.message : String(err) };
-      if (err && err.code === RESCAN_IN_PROGRESS) failure.busy = true;
+      const failure = { ok: false, error: messageOf(err) };
+      if (err && err.code) failure.code = err.code;
       return failure;
     }
   }
 
   handle(CHANNELS.pickFolders, async () => {
-    const options = { title: 'Add folder', properties: [...PICKER_PROPERTIES] };
+    const options = { title: 'Add folder', properties: PICKER_PROPERTIES };
     const win = getWindow();
     const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
     if (result.canceled) return { canceled: true, paths: [] };
@@ -77,7 +60,10 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, getWindow
   });
 
   handle(CHANNELS.createCollection, (_event, name, directories) =>
-    guard(async () => ({ view: await service.createCollection(name, directories) })));
+    guard(async () => {
+      const { collection, folders } = await service.createCollection(name, directories);
+      return { summary: { id: collection.id, name: collection.name, folderCount: folders.length } };
+    }));
 
   handle(CHANNELS.listCollections, () =>
     guard(async () => ({ summaries: await service.listCollectionSummaries() })));
@@ -97,4 +83,4 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, getWindow
     }));
 }
 
-module.exports = { registerIpc, getRegisteredHandler, CHANNELS, PICKER_PROPERTIES };
+module.exports = { registerIpc, CHANNELS };

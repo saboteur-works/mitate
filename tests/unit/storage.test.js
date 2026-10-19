@@ -116,6 +116,38 @@ describe('storage persistence', () => {
     fs.writeFileSync(f, JSON.stringify({ version: 99 }));
     expect(() => openStorage({ location: { file: f } })).toThrow(/unsupported/);
   });
+
+  it('reports every open failure as STORE_OPEN_FAILED with a reason, the file and the original error', () => {
+    const f = file(dir);
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    const failure = () => {
+      try {
+        openStorage({ location: { file: f } });
+      } catch (err) {
+        return err;
+      }
+      throw new Error('open should have failed');
+    };
+
+    fs.writeFileSync(f, '{ not json');
+    let err = failure();
+    expect([err.code, err.reason, err.file]).toEqual(['STORE_OPEN_FAILED', 'corrupt', f]);
+    expect(err.cause).toBeInstanceOf(SyntaxError);
+
+    fs.writeFileSync(f, JSON.stringify({ version: 99 }));
+    err = failure();
+    expect([err.code, err.reason, err.file]).toEqual(['STORE_OPEN_FAILED', 'unsupported-format', f]);
+    expect([err.foundVersion, err.supportedVersion]).toEqual([99, 1]);
+
+    fs.writeFileSync(f, '{}');
+    expect(failure().foundVersion).toBeUndefined();
+
+    fs.rmSync(f);
+    fs.mkdirSync(f); // a directory where the file should be: reading it fails with EISDIR
+    err = failure();
+    expect([err.code, err.reason, err.file]).toEqual(['STORE_OPEN_FAILED', 'unreadable', f]);
+    expect(err.cause.code).toBe('EISDIR');
+  });
 });
 
 describe('storage location', () => {
@@ -144,7 +176,7 @@ describe('storage location', () => {
 
 describe('storage module surface', () => {
   it('exposes only functions (an API), no data or store contents', () => {
-    expect(Object.keys(storageModule).sort()).toEqual(['defaultStorageFile', 'openStorage']);
+    expect(Object.keys(storageModule).sort()).toEqual(['defaultStorageFile', 'openStorage', 'resolveStorageFile']);
     for (const value of Object.values(storageModule)) expect(typeof value).toBe('function');
     const store = openStorage({ location: { file: file(dir) } });
     for (const value of Object.values(store)) expect(typeof value).toBe('function');

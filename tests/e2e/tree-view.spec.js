@@ -11,10 +11,11 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { test, expect, _electron: electron } = require('@playwright/test');
-const { APP_ENTRY } = require('../support/app-entry.js');
+const { test, expect } = require('@playwright/test');
 const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tree.js');
-const { wrapHandler } = require('../support/ipc-wrap.js');
+const { newUserDataDir, launchApp, rowAt, selectOnlyCollection, gateChannel } = require('../support/e2e-app.js');
+const { CHANNELS } = require('../../src/main/ipc.js');
+const { lookupFileName } = require('../../src/main/registry/types.js');
 const { openStorage } = require('../../src/main/storage/index.js');
 const { createCollectionService } = require('../../src/main/collections/service.js');
 
@@ -25,19 +26,17 @@ const MAX_ROWS = 200;
 const MAX_TREE_NODES = 200;
 const LARGE_COUNT = 50000;
 
-function newUserDataDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'media-organizer-tree-e2e-'));
-}
-
+// A discovery-shaped record: extension, kind and subtype come from the registry.
 function fileRecord(folderPath, rel) {
   const name = rel.split('/').pop();
-  const dot = name.lastIndexOf('.');
+  const { extension, kind, subtype } = lookupFileName(name);
   return {
     path: `${folderPath}/${rel}`,
     relativePath: rel,
     name,
-    extension: dot >= 0 ? name.slice(dot + 1).toLowerCase() : '',
-    kind: 'image',
+    extension,
+    kind,
+    ...(subtype ? { subtype } : {}),
   };
 }
 
@@ -56,24 +55,7 @@ function seedCollection(userDataDir, name, folders, collectionId = 'col-1') {
   }
 }
 
-async function launch(userDataDir) {
-  const app = await electron.launch({
-    args: [APP_ENTRY, `--user-data-dir=${userDataDir}`],
-    cwd: path.join(__dirname, '..', '..'),
-  });
-  const window = await app.firstWindow();
-  await window.waitForLoadState('domcontentloaded');
-  return { app, window };
-}
-
-const rowAt = (window, p) => window.locator(`[data-testid="tree-row"][data-path="${p}"]`);
 const rowIndex = async (window, p) => Number(await rowAt(window, p).getAttribute('data-index'));
-
-async function selectFirstCollection(window) {
-  await expect(window.getByTestId('collection-item')).toHaveCount(1, { timeout: 30000 });
-  await window.getByTestId('collection-item').click();
-  await expect(window.getByTestId('tree-row').first()).toBeVisible({ timeout: 30000 });
-}
 
 async function domCounts(window) {
   return window.evaluate(() => {
@@ -86,7 +68,7 @@ async function domCounts(window) {
 }
 
 test('fixture collection renders a tree mirroring the disk structure, folders before files', async () => {
-  const userDataDir = newUserDataDir();
+  const userDataDir = newUserDataDir('tree-e2e');
   const fixture = buildFixtureTree();
   const root = fixture.root;
   let session;
@@ -94,9 +76,9 @@ test('fixture collection renders a tree mirroring the disk structure, folders be
     const storage = openStorage({ location: { baseDir: userDataDir } });
     await createCollectionService({ storage }).createCollection('Fixture', [root]);
 
-    session = await launch(userDataDir);
+    session = await launchApp(userDataDir);
     const { window } = session;
-    await selectFirstCollection(window);
+    await selectOnlyCollection(window);
 
     // Roots start collapsed: exactly the root row is shown.
     await expect(window.getByTestId('tree-row')).toHaveCount(1);
@@ -174,7 +156,7 @@ test('fixture collection renders a tree mirroring the disk structure, folders be
 
 test('a 50,000-file index renders a bounded number of DOM nodes and scrolls', async () => {
   test.setTimeout(180000);
-  const userDataDir = newUserDataDir();
+  const userDataDir = newUserDataDir('tree-e2e');
   const folderPath = fs.mkdtempSync(path.join(os.tmpdir(), 'mo-tree-large-'));
   let session;
   try {
@@ -182,9 +164,9 @@ test('a 50,000-file index renders a bounded number of DOM nodes and scrolls', as
     for (let i = 0; i < LARGE_COUNT; i++) files.push(`IMG_${i}.jpg`);
     seedCollection(userDataDir, 'Large', [{ id: 'f-large', path: folderPath, unavailable: false, files }]);
 
-    session = await launch(userDataDir);
+    session = await launchApp(userDataDir);
     const { window } = session;
-    await selectFirstCollection(window);
+    await selectOnlyCollection(window);
 
     // Collapsed: only the root row.
     expect((await domCounts(window)).rows).toBe(1);
@@ -251,7 +233,7 @@ test('a 50,000-file index renders a bounded number of DOM nodes and scrolls', as
 });
 
 test('unavailable folders keep their files, marked unavailable; unavailable empty roots are shown', async () => {
-  const userDataDir = newUserDataDir();
+  const userDataDir = newUserDataDir('tree-e2e');
   const present = fs.mkdtempSync(path.join(os.tmpdir(), 'mo-tree-present-'));
   const missingWith = path.join(userDataDir, 'missing', 'gone-with-files');
   const missingEmpty = path.join(userDataDir, 'missing', 'gone-empty');
@@ -263,9 +245,9 @@ test('unavailable folders keep their files, marked unavailable; unavailable empt
       { id: 'f-present', path: present, unavailable: false, files: ['ok.jpg'] },
     ]);
 
-    session = await launch(userDataDir);
+    session = await launchApp(userDataDir);
     const { window } = session;
-    await selectFirstCollection(window);
+    await selectOnlyCollection(window);
 
     // All three roots are shown, including the unavailable one with no files.
     await expect(window.getByTestId('tree-row')).toHaveCount(3);
@@ -302,7 +284,7 @@ test('unavailable folders keep their files, marked unavailable; unavailable empt
 // subfolder b under root <tmp>/a share data-path, so rows are addressed by data-node-id
 // (<rootFolderId>:<relativePath>) and expansion state must be independent.
 test('overlapping roots: the root /a/b and the subfolder b under root /a expand independently', async () => {
-  const userDataDir = newUserDataDir();
+  const userDataDir = newUserDataDir('tree-e2e');
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'mo-tree-overlap-'));
   const rootA = path.join(base, 'a');
   const rootB = path.join(base, 'a', 'b');
@@ -314,9 +296,9 @@ test('overlapping roots: the root /a/b and the subfolder b under root /a expand 
       { id: 'f-b', path: rootB, unavailable: false, files: ['inB.jpg'] },
     ]);
 
-    session = await launch(userDataDir);
+    session = await launchApp(userDataDir);
     const { window } = session;
-    await selectFirstCollection(window);
+    await selectOnlyCollection(window);
 
     const byId = (id) => window.locator(`[data-testid="tree-row"][data-node-id="${id}"]`);
     const idRootA = 'f-a:';
@@ -364,35 +346,23 @@ test('overlapping roots: the root /a/b and the subfolder b under root /a expand 
   }
 });
 
-// The late response is produced in the main process: the getView handler is wrapped
-// through tests/support/ipc-wrap.js (getRegisteredHandler from src/main/ipc.js plus
-// ipcMain.removeHandler/handle; fails loudly if absent, as in create-collection.spec.js)
-// so each collection's reply
-// waits on a gate the test releases. Gates make the arrival order deterministic.
+// The late response is produced in the main process: the getView handler is gated per
+// collection id (gateChannel in tests/support/e2e-app.js, built on ipc-wrap.js) so each
+// collection's reply waits on a gate the test releases. Gates make the arrival order
+// deterministic.
 for (const [first, second] of [['A', 'B'], ['B', 'A']]) {
   test(`a late view response for ${first} does not overwrite the tree of ${second}, clicked last`, async () => {
-    const userDataDir = newUserDataDir();
+    const userDataDir = newUserDataDir('tree-e2e');
     const pathOf = { A: path.join(userDataDir, 'missing', 'root-a'), B: path.join(userDataDir, 'missing', 'root-b') };
     let session;
     try {
       seedCollection(userDataDir, 'Alpha', [{ id: 'f-a', path: pathOf.A, unavailable: false, files: ['only-a.jpg'] }], 'col-a');
       seedCollection(userDataDir, 'Beta', [{ id: 'f-b', path: pathOf.B, unavailable: false, files: ['only-b.jpg'] }], 'col-b');
 
-      session = await launch(userDataDir);
+      session = await launchApp(userDataDir);
       const { app, window } = session;
-      await wrapHandler(app, 'collections:getView', (original) => {
-        globalThis.__viewReleases = {};
-        globalThis.__viewDone = [];
-        return async (event, collectionId) => {
-          await new Promise((resolve) => { globalThis.__viewReleases[collectionId] = resolve; });
-          const result = await original(event, collectionId);
-          globalThis.__viewDone.push(collectionId);
-          return result;
-        };
-      });
-      const release = (id) => app.evaluate((_electron, cid) => globalThis.__viewReleases[cid](), id);
-      const pending = (id) => app.evaluate((_electron, cid) => typeof globalThis.__viewReleases[cid] === 'function', id);
-      const done = (id) => app.evaluate((_electron, cid) => globalThis.__viewDone.includes(cid), id);
+      const gate = await gateChannel(app, CHANNELS.getCollectionView, { keyed: true });
+      const { release, pending, done } = gate;
       const item = (label) => window.getByTestId('collection-item').filter({ hasText: label });
       const idOf = { A: 'col-a', B: 'col-b' };
       const labelOf = { A: 'Alpha', B: 'Beta' };

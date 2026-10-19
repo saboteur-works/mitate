@@ -1,20 +1,13 @@
 'use strict';
 
 const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const { test, expect, _electron: electron } = require('@playwright/test');
-const { APP_ENTRY } = require('../support/app-entry.js');
+const { test, expect } = require('@playwright/test');
+const { newUserDataDir, launchApp } = require('../support/e2e-app.js');
 
 test('app launches and opens a window with a title', async () => {
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-organizer-e2e-'));
-  const app = await electron.launch({
-    args: [APP_ENTRY, `--user-data-dir=${userDataDir}`],
-    cwd: path.join(__dirname, '..', '..'),
-  });
+  const userDataDir = newUserDataDir('e2e');
+  const { app, window } = await launchApp(userDataDir);
   try {
-    const window = await app.firstWindow();
-    await window.waitForLoadState('domcontentloaded');
     const title = await window.title();
     expect(title.length).toBeGreaterThan(0);
     expect(title).toBe('Media Organizer');

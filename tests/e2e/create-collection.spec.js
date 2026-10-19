@@ -1,47 +1,27 @@
 'use strict';
 
 const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const { test, expect, _electron: electron } = require('@playwright/test');
-const { APP_ENTRY } = require('../support/app-entry.js');
+const { test, expect } = require('@playwright/test');
 const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tree.js');
-const { wrapHandler } = require('../support/ipc-wrap.js');
+const { newUserDataDir, launchApp, stubFolderPicker, gateChannel } = require('../support/e2e-app.js');
+const { CHANNELS } = require('../../src/main/ipc.js');
 
 // Why the main-process handler is slowed rather than window.mediaOrganizer.createCollection:
 // the object comes from contextBridge, so the page cannot reliably replace its members (and
 // the renderer holds its own reference). Instead the test wraps the already-registered
-// 'collections:create' handler (tests/support/ipc-wrap.js: original looked up with
-// getRegisteredHandler from src/main/ipc.js, channel re-registered with
-// ipcMain.removeHandler/handle; fails loudly if the handler is absent) so each call
-// counts itself and waits on a gate the test releases. No production code carries a test hook.
+// create handler (gateChannel in tests/support/e2e-app.js, built on ipc-wrap.js) so each
+// call counts itself and waits on a gate the test releases. No production code carries a
+// test hook.
 test('Create is disabled while a collection is being created; double-click creates one', async () => {
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-organizer-e2e-'));
+  const userDataDir = newUserDataDir('e2e');
   const tree = buildFixtureTree();
-  const app = await electron.launch({
-    args: [APP_ENTRY, `--user-data-dir=${userDataDir}`],
-    cwd: path.join(__dirname, '..', '..'),
-  });
+  const { app, window } = await launchApp(userDataDir);
   try {
-    await app.evaluate(({ dialog }, folderPath) => {
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folderPath] });
-    }, tree.root);
-    await wrapHandler(app, 'collections:create', (original) => {
-      globalThis.__createCalls = 0;
-      let release;
-      const gate = new Promise((resolve) => { release = resolve; });
-      globalThis.__releaseCreate = release;
-      return async (...args) => {
-        globalThis.__createCalls += 1;
-        await gate;
-        return original(...args);
-      };
-    });
+    await stubFolderPicker(app, [tree.root]);
+    const gate = await gateChannel(app, CHANNELS.createCollection);
 
-    const window = await app.firstWindow();
-    await window.waitForLoadState('domcontentloaded');
     const byId = (id) => window.getByTestId(id);
-    const createCalls = () => app.evaluate(() => globalThis.__createCalls);
+    const createCalls = gate.calls;
 
     await byId('add-folder').click();
     await expect(byId('folder-item')).toHaveCount(1);
@@ -58,7 +38,7 @@ test('Create is disabled while a collection is being created; double-click creat
     await expect(byId('collection-item')).toHaveCount(0);
 
     // Release the pending call: one collection, button usable again.
-    await app.evaluate(() => globalThis.__releaseCreate());
+    await gate.release();
     await expect(byId('collection-item')).toHaveCount(1);
     await expect(byId('create-collection')).toBeEnabled();
     await expect(byId('collection-name-label')).toHaveText('Once Only');
@@ -76,31 +56,14 @@ test('Create is disabled while a collection is being created; double-click creat
 });
 
 test('creates a collection from picked folders; picker is directory-only; empty name refused', async () => {
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-organizer-e2e-'));
+  const userDataDir = newUserDataDir('e2e');
   const treeA = buildFixtureTree();
   const treeB = buildFixtureTree();
   const paths = [treeA.root, treeB.root];
-  const app = await electron.launch({
-    args: [APP_ENTRY, `--user-data-dir=${userDataDir}`],
-    cwd: path.join(__dirname, '..', '..'),
-  });
+  const { app, window } = await launchApp(userDataDir);
   try {
-    await app.evaluate(({ dialog }, folderPaths) => {
-      dialog.showOpenDialog = async (...args) => {
-        globalThis.__lastDialogOptions = args[args.length - 1];
-        // Was the picker attached to the app window? (The window has no focus
-        // in a background test run, as when the user has clicked another app.)
-        const parent = args.length > 1 ? args[0] : null;
-        globalThis.__dialogParentIsAppWindow =
-          parent !== null &&
-          !parent.isDestroyed() &&
-          parent.webContents.getURL().endsWith('/src/renderer/index.html');
-        return { canceled: false, filePaths: folderPaths };
-      };
-    }, paths);
+    const picker = await stubFolderPicker(app, paths);
 
-    const window = await app.firstWindow();
-    await window.waitForLoadState('domcontentloaded');
     const byId = (id) => window.getByTestId(id);
 
     await expect(byId('collection-item')).toHaveCount(0);
@@ -126,11 +89,11 @@ test('creates a collection from picked folders; picker is directory-only; empty 
     await expect(byId('folder-item')).toHaveCount(0);
 
     // The picker was opened for directories only.
-    const options = await app.evaluate(() => globalThis.__lastDialogOptions);
+    const options = await picker.lastOptions();
     expect(options.properties).toContain('openDirectory');
     expect(options.properties).not.toContain('openFile');
     // ...and attached to the app window even though it isn't focused.
-    expect(await app.evaluate(() => globalThis.__dialogParentIsAppWindow)).toBe(true);
+    expect(await picker.parentIsAppWindow()).toBe(true);
 
     // The page offers no file input.
     await expect(window.locator('input[type="file"]')).toHaveCount(0);

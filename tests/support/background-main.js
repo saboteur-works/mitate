@@ -17,6 +17,9 @@
  * can't be redefined ("Cannot redefine property: BrowserWindow"), hence the
  * module-load hook below.
  *
+ * The same copy of `electron` records ipcMain.handle registrations in
+ * globalThis.__moIpcHandlers (channel -> handler) for tests/support/ipc-wrap.js.
+ *
  * Set MO_E2E_VISIBLE=1 to run with normal, visible windows (for debugging).
  */
 
@@ -24,24 +27,44 @@ const path = require('node:path');
 const Module = require('node:module');
 const electron = require('electron');
 
-if (process.env.MO_E2E_VISIBLE !== '1') {
-  class HiddenWindow extends electron.BrowserWindow {
-    constructor(options = {}) {
-      super({
-        ...options,
-        show: false,
-        webPreferences: { ...(options.webPreferences || {}), backgroundThrottling: false },
-      });
+// Every handler the app registers with ipcMain.handle is recorded here, keyed by
+// channel, so a test can wrap it (tests/support/ipc-wrap.js). Test-only: the
+// app's own code does not know about it.
+globalThis.__moIpcHandlers = new Map();
+const recordingIpcMain = new Proxy(electron.ipcMain, {
+  get(target, key) {
+    if (key === 'handle') {
+      return (channel, fn) => {
+        globalThis.__moIpcHandlers.set(channel, fn);
+        return target.handle(channel, fn);
+      };
     }
+    const value = target[key];
+    return typeof value === 'function' ? value.bind(target) : value;
+  },
+});
+
+const visible = process.env.MO_E2E_VISIBLE === '1';
+class HiddenWindow extends electron.BrowserWindow {
+  constructor(options = {}) {
+    super({
+      ...options,
+      show: false,
+      webPreferences: { ...(options.webPreferences || {}), backgroundThrottling: false },
+    });
   }
-  const backgroundElectron = new Proxy(electron, {
-    get: (target, key) => (key === 'BrowserWindow' ? HiddenWindow : target[key]),
-  });
-  const load = Module._load;
-  Module._load = function loadWithBackgroundElectron(request, ...rest) {
-    return request === 'electron' ? backgroundElectron : load.call(this, request, ...rest);
-  };
-  if (process.platform === 'darwin') electron.app.setActivationPolicy('accessory');
 }
+const backgroundElectron = new Proxy(electron, {
+  get(target, key) {
+    if (key === 'ipcMain') return recordingIpcMain;
+    if (key === 'BrowserWindow' && !visible) return HiddenWindow;
+    return target[key];
+  },
+});
+const load = Module._load;
+Module._load = function loadWithBackgroundElectron(request, ...rest) {
+  return request === 'electron' ? backgroundElectron : load.call(this, request, ...rest);
+};
+if (!visible && process.platform === 'darwin') electron.app.setActivationPolicy('accessory');
 
 require(path.join(__dirname, '..', '..', 'src', 'main', 'main.js'));

@@ -35,7 +35,6 @@
  *     name: string            // base name including extension
  *     extension: string       // lower-case, no dot ("" if none)
  *     kind: string            // file kind, e.g. "image", "video", "other"
- *     unavailable?: boolean   // set when the owning folder is unavailable
  *     ...any further fields the indexer adds are stored unchanged
  *   }
  *   FolderAccess              // per-folder access data (FR-3); an opaque
@@ -51,6 +50,14 @@
  * fn see the uncommitted changes. Nested transaction calls throw. Mutators
  * called outside a transaction persist immediately, one write each. Returns
  * fn's result.
+ *
+ * Open failures (openStorage throws): one error type with code
+ * 'STORE_OPEN_FAILED' and reason 'unreadable' (the file exists but cannot be
+ * read), 'corrupt' (not valid JSON) or 'unsupported-format' (JSON with a
+ * format version other than the supported one). The error also carries file,
+ * foundVersion and supportedVersion (unsupported-format only) and cause (the
+ * original error, for unreadable and corrupt). A bad `location` throws a plain
+ * Error. The store file is never changed when opening fails.
  *
  * Test seam: config.fs optionally overrides any of mkdirSync, writeFileSync,
  * renameSync, rmSync, readFileSync (default: node:fs), so tests can count the
@@ -106,21 +113,33 @@ function emptyState() {
   return { version: FORMAT_VERSION, collections: {}, folders: {}, index: {}, access: {} };
 }
 
+function openFailed(reason, file, message, extra) {
+  const err = new Error(message);
+  err.code = 'STORE_OPEN_FAILED';
+  err.reason = reason;
+  err.file = file;
+  err.supportedVersion = FORMAT_VERSION;
+  return Object.assign(err, extra);
+}
+
 function load(file, fs) {
   let text;
   try {
     text = fs.readFileSync(file, 'utf8');
-  } catch (err) {
-    if (err.code === 'ENOENT') return emptyState();
-    throw err;
+  } catch (cause) {
+    if (cause.code === 'ENOENT') return emptyState();
+    throw openFailed('unreadable', file, `cannot read storage file ${file}: ${cause.message}`, { cause });
   }
-  const state = JSON.parse(text);
+  let state;
+  try {
+    state = JSON.parse(text);
+  } catch (cause) {
+    throw openFailed('corrupt', file, `storage file ${file} is not valid JSON: ${cause.message}`, { cause });
+  }
   if (!state || state.version !== FORMAT_VERSION) {
-    const err = new Error(`unsupported storage format in ${file}`);
-    err.code = 'STORE_FORMAT_UNSUPPORTED';
-    err.foundVersion = state && Number.isInteger(state.version) ? state.version : undefined;
-    err.supportedVersion = FORMAT_VERSION;
-    throw err;
+    throw openFailed('unsupported-format', file, `unsupported storage format in ${file}`, {
+      foundVersion: state && Number.isInteger(state.version) ? state.version : undefined,
+    });
   }
   return Object.assign(emptyState(), state);
 }
@@ -247,9 +266,9 @@ function openStorage(config) {
     replaceFolderIndex(folderId, fileRecords) {
       const folder = requireFolder(folderId);
       if (!Array.isArray(fileRecords)) throw new Error('file records must be an array');
-      state.index[folderId] = copy(
-        fileRecords.map((r) => Object.assign({}, r, { folderId, collectionId: folder.collectionId }))
-      );
+      // One deep copy; the stored records never alias the caller's objects.
+      state.index[folderId] = copy(fileRecords).map((r) =>
+        Object.assign(r, { folderId, collectionId: folder.collectionId }));
       commit();
     },
 
@@ -262,4 +281,4 @@ function openStorage(config) {
   };
 }
 
-module.exports = { openStorage, defaultStorageFile };
+module.exports = { openStorage, defaultStorageFile, resolveStorageFile };

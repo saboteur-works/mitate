@@ -12,9 +12,9 @@
  *
  * Decisions:
  * - The view part has the same shape as collectionService.getCollectionView
- *   (it is produced by that function; file-level `unavailable` is derived from
- *   the folder flag).
- * - A folder that is not an accessible directory is skipped: its stored files
+ *   (it is produced by the same collectionView function; file-level
+ *   `unavailable` is derived from the folder flag).
+ * - A folder whose scan rejects (not an accessible directory) is skipped: its stored files
  *   and record are untouched except that the folder is flagged unavailable.
  * - An available folder is scanned and its index replaced. After a successful
  *   scan the folder's state is re-read from storage (the snapshot taken before
@@ -35,41 +35,34 @@
  *   Error (code RESCAN_IN_PROGRESS) and does not run discovery; a rescan of a
  *   different collection is not blocked. The marker is cleared in a finally,
  *   so it is released on success and on failure.
- * - Launch behaviour ("show the stored index without scanning") is
- *   loadCollections in service.js; nothing here runs on launch.
- * - Only reads collection folders (stat, access, scan); never writes there.
+ * - Nothing here runs on launch; the stored index is shown without scanning
+ *   (service.js).
+ * - Only reads collection folders (the scan); never writes there.
  * - An unknown collection id rejects.
  */
 
-// defaultScan and isReadableDirectory live in service.js (rescan.js already
-// imports it, so sharing from there adds no circular import).
-const { createCollectionService, defaultScan, isReadableDirectory } = require('./service.js');
+const { collectionView } = require('./service.js');
+const { defaultScan, scanFolder } = require('./folder-access.js');
 
 const RESCAN_IN_PROGRESS = 'RESCAN_IN_PROGRESS';
 
 function createRescanService({ storage, scan = defaultScan } = {}) {
   if (!storage) throw new Error('storage is required');
-  const views = createCollectionService({ storage, scan });
   const inFlight = new Set();
 
-  // Awaited phase (no storage writes): decide what to do for one folder.
-  // Returns { folder, status: 'scan', records } or { folder, status: 'unavailable' }.
+  // Awaited phase (no storage writes): scan one folder. A rejecting scan
+  // (missing, unreadable or not a directory) yields unavailable: true.
   async function inspectFolder(folder) {
-    if (!(await isReadableDirectory(folder.path))) return { folder, status: 'unavailable' };
-    try {
-      return { folder, status: 'scan', records: await scan(folder.path) };
-    } catch {
-      return { folder, status: 'unavailable' };
-    }
+    return { folder, ...(await scanFolder(scan, folder.path)) };
   }
 
   // Synchronous phase, run inside the transaction. Re-reads the folder from
   // storage (the pre-await snapshot may be stale). Returns true when the folder
   // was rescanned, false when skipped.
-  function applyResult({ folder, status, records }) {
+  function applyResult({ folder, unavailable, records }) {
     const current = storage.getFolder(folder.id);
     if (!current) return false; // removed from storage while scanning: write nothing
-    if (status === 'unavailable') {
+    if (unavailable) {
       if (!current.unavailable) storage.setFolderUnavailable(folder.id, true);
       return false;
     }
@@ -96,7 +89,7 @@ function createRescanService({ storage, scan = defaultScan } = {}) {
           (applyResult(result) ? summary.rescanned : summary.skipped).push(result.folder.id);
         }
       });
-      const view = views.getCollectionView(collectionId);
+      const view = collectionView(storage, collectionId);
       if (!view) throw new Error(`collection ${collectionId} no longer exists`);
       return { ...view, summary };
     } finally {

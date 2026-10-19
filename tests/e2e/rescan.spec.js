@@ -14,33 +14,15 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { test, expect, _electron: electron } = require('@playwright/test');
-const { APP_ENTRY } = require('../support/app-entry.js');
-const { wrapHandler } = require('../support/ipc-wrap.js');
+const { test, expect } = require('@playwright/test');
+const { newUserDataDir, launchApp, rowAt, selectOnlyCollection, gateChannel } = require('../support/e2e-app.js');
+const { CHANNELS } = require('../../src/main/ipc.js');
 const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tree.js');
 const { openStorage } = require('../../src/main/storage/index.js');
 const { createCollectionService } = require('../../src/main/collections/service.js');
 
-async function launch(userDataDir) {
-  const app = await electron.launch({
-    args: [APP_ENTRY, `--user-data-dir=${userDataDir}`],
-    cwd: path.join(__dirname, '..', '..'),
-  });
-  const window = await app.firstWindow();
-  await window.waitForLoadState('domcontentloaded');
-  return { app, window };
-}
-
-const rowAt = (window, p) => window.locator(`[data-testid="tree-row"][data-path="${p}"]`);
-
-async function selectCollection(window) {
-  await expect(window.getByTestId('collection-item')).toHaveCount(1, { timeout: 30000 });
-  await window.getByTestId('collection-item').click();
-  await expect(window.getByTestId('tree-row').first()).toBeVisible({ timeout: 30000 });
-}
-
 test('rescan is user-triggered, picks up added and removed files, and relaunch shows the stored tree without scanning', async () => {
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-organizer-rescan-e2e-'));
+  const userDataDir = newUserDataDir('rescan-e2e');
   const fixture = buildFixtureTree();
   const root = fixture.root;
   const docs = `${root}/Docs`;
@@ -52,9 +34,9 @@ test('rescan is user-triggered, picks up added and removed files, and relaunch s
     const storage = openStorage({ location: { baseDir: userDataDir } });
     await createCollectionService({ storage }).createCollection('Rescan', [root]);
 
-    session = await launch(userDataDir);
+    session = await launchApp(userDataDir);
     let { window } = session;
-    await selectCollection(window);
+    await selectOnlyCollection(window);
     await expect(window.getByTestId('rescan')).toBeEnabled();
     await rowAt(window, root).click();
     await rowAt(window, docs).click();
@@ -84,9 +66,9 @@ test('rescan is user-triggered, picks up added and removed files, and relaunch s
     session = null;
     fs.writeFileSync(late, 'added while the app was closed\n');
 
-    session = await launch(userDataDir);
+    session = await launchApp(userDataDir);
     window = session.window;
-    await selectCollection(window);
+    await selectOnlyCollection(window);
     await rowAt(window, root).click();
     await rowAt(window, docs).click();
     // The stored (rescanned) state is shown, and the late file is not: no scan ran.
@@ -105,11 +87,11 @@ test('rescan is user-triggered, picks up added and removed files, and relaunch s
 });
 
 // The rescan is held in flight by wrapping the main-process 'collections:rescan' handler
-// (tests/support/ipc-wrap.js) with a gate the test releases; no production code carries a
+// (gateChannel in tests/support/e2e-app.js) with a gate the test releases; no production code carries a
 // test hook. The preload object is a frozen contextBridge object, so the renderer API is
 // not wrapped. The wrapper is installed after the window has loaded (IPC is registered).
 test('Rescan stays disabled for a collection whose rescan is running, even after selecting another collection and back', async () => {
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-organizer-rescan-busy-e2e-'));
+  const userDataDir = newUserDataDir('rescan-busy-e2e');
   const fixture = buildFixtureTree();
   const other = fs.mkdtempSync(path.join(os.tmpdir(), 'media-organizer-rescan-busy-other-'));
   fs.writeFileSync(path.join(other, 'b.pdf'), 'b\n');
@@ -120,17 +102,9 @@ test('Rescan stays disabled for a collection whose rescan is running, even after
     await service.createCollection('Alpha', [fixture.root]);
     await service.createCollection('Beta', [other]);
 
-    session = await launch(userDataDir);
+    session = await launchApp(userDataDir);
     const { app, window } = session;
-    await wrapHandler(app, 'collections:rescan', (original) => {
-      let release;
-      const gate = new Promise((resolve) => { release = resolve; });
-      globalThis.__releaseRescan = release;
-      return async (event, ...args) => {
-        await gate;
-        return original(event, ...args);
-      };
-    });
+    const gate = await gateChannel(app, CHANNELS.rescanCollection);
     const items = window.getByTestId('collection-item');
     const alpha = items.filter({ hasText: 'Alpha' });
     const beta = items.filter({ hasText: 'Beta' });
@@ -155,7 +129,7 @@ test('Rescan stays disabled for a collection whose rescan is running, even after
     await expect(window.getByTestId('rescan-status')).toHaveText('Rescanning...');
 
     // It re-enables only once the rescan has finished.
-    await app.evaluate(() => globalThis.__releaseRescan());
+    await gate.release();
     await expect(window.getByTestId('rescan-status')).toContainText('Rescanned 1 folders', { timeout: 30000 });
     await expect(rescan).toBeEnabled();
   } finally {

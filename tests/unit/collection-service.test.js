@@ -491,6 +491,28 @@ describe('launch availability check writes the store once', () => {
   });
 });
 
+describe('availability check across collections', () => {
+  it('checks the folders of several collections and persists all flag changes in one write (FR-18)', async () => {
+    const { createCountingFs } = require('../support/counting-fs.js');
+    const dirs = ['one', 'two', 'three'].map((n) => {
+      const d = path.join(work, n);
+      fs.mkdirSync(d);
+      return d;
+    });
+    const svc = service();
+    await svc.createCollection('a', [dirs[0]]);
+    await svc.createCollection('b', [dirs[1], dirs[2]]);
+    fs.rmdirSync(dirs[0]);
+    fs.rmdirSync(dirs[2]);
+
+    const counter = createCountingFs();
+    const storage = openStorage({ location: { file: storageFile }, fs: counter.impl });
+    const summaries = await createCollectionService({ storage, scan: throwingScan }).listCollectionSummaries();
+    expect(summaries.map((s) => s.folders.map((f) => f.unavailable))).toEqual([[true], [false, true]]);
+    expect(counter.renames).toBe(1);
+  });
+});
+
 describe('rescan of a collection removed while it is scanning', () => {
   const { createRescanService } = require('../../src/main/collections/rescan.js');
 
