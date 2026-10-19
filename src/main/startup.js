@@ -21,17 +21,44 @@ const path = require('node:path');
 
 const STORE_FILE_NAME = 'store.json';
 
+const UNCHANGED = 'The file has not been changed.';
+
+// Describes why the store could not be opened, by the kind of failure.
+function describeFailure(error, file) {
+  const detail = error && error.message ? error.message : String(error);
+  const code = error && error.code;
+  if (code === 'STORE_FORMAT_UNSUPPORTED') {
+    const found = error.foundVersion;
+    const supported = error.supportedVersion;
+    if (found === undefined) {
+      return `The data file ${file} is not in a format this app recognizes. ${UNCHANGED} Restore it from a backup.`;
+    }
+    if (found > supported) {
+      return (
+        `The data file ${file} was written by a newer version of this app (format ${found}; ` +
+        `this version reads format ${supported}). ${UNCHANGED} Install a newer version of the app to open it.`
+      );
+    }
+    return (
+      `The data file ${file} uses an older data format (format ${found}) that this version of the app ` +
+      `cannot open (it reads format ${supported}). ${UNCHANGED}`
+    );
+  }
+  if (error instanceof SyntaxError) {
+    return `The data file ${file} is not valid JSON (${detail}) and may be damaged. ${UNCHANGED} Restore it from a backup.`;
+  }
+  if (code === 'EACCES' || code === 'EPERM') {
+    return `The data file ${file} could not be read: permission denied (${code}). ${UNCHANGED} Check the file's permissions.`;
+  }
+  return `The data file ${file} could not be opened (${detail}). ${UNCHANGED}`;
+}
+
 async function startStorage({ baseDir, openStorage, reportError }) {
   try {
     const storage = openStorage({ location: { baseDir } });
     return { ok: true, storage };
   } catch (error) {
-    const file = path.join(baseDir, STORE_FILE_NAME);
-    const detail = error && error.message ? error.message : String(error);
-    const message =
-      `The data file ${file} could not be opened (${detail}). ` +
-      'It is corrupt or was written by a newer version of this app. ' +
-      'The file has not been changed. Restore it from a backup or install a newer version.';
+    const message = describeFailure(error, path.join(baseDir, STORE_FILE_NAME));
     try {
       await reportError(message);
     } catch (reportFailure) {

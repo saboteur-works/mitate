@@ -32,26 +32,43 @@ async function expectReportedAndUntouched(content) {
   expect(result.ok).toBe(false);
   expect(result.storage).toBeUndefined();
   expect(reportError).toHaveBeenCalledTimes(1);
-  expect(reportError.mock.calls[0][0]).toContain(storeFile);
+  const message = reportError.mock.calls[0][0];
+  expect(message).toContain(storeFile);
+  expect(message).toContain('The file has not been changed.');
   expect(fs.readFileSync(storeFile).equals(before)).toBe(true);
   expect(fs.readdirSync(baseDir).sort()).toEqual(filesBefore);
+  return message;
 }
 
 describe('startStorage', () => {
-  it('reports a store.json with invalid JSON and leaves it untouched', async () => {
-    await expectReportedAndUntouched('{ this is not json');
+  it('reports a store.json with invalid JSON as damaged and leaves it untouched', async () => {
+    const message = await expectReportedAndUntouched('{ this is not json');
+    expect(message).toMatch(/not valid JSON/);
+    expect(message).toMatch(/backup/);
+    expect(message).not.toMatch(/newer version/);
   });
 
-  it('reports a store.json with a version above the supported one and leaves it untouched', async () => {
-    await expectReportedAndUntouched(
+  it('reports a store.json with a version above the supported one as newer and leaves it untouched', async () => {
+    const message = await expectReportedAndUntouched(
       JSON.stringify({ version: 999, collections: {}, folders: {}, index: {}, access: {} })
     );
+    expect(message).toMatch(/newer version of this app/);
+    expect(message).toMatch(/format 999/);
+    expect(message).not.toMatch(/corrupt|damaged/);
   });
 
-  it('reports a store.json with a version below the supported one and leaves it untouched', async () => {
-    await expectReportedAndUntouched(
+  it('reports a store.json with a version below the supported one as older and leaves it untouched', async () => {
+    const message = await expectReportedAndUntouched(
       JSON.stringify({ version: 0, collections: {}, folders: {}, index: {}, access: {} })
     );
+    expect(message).toMatch(/older data format \(format 0\)/);
+    expect(message).not.toMatch(/newer version|corrupt|damaged/);
+  });
+
+  it('reports a store.json without a usable version as unrecognized and leaves it untouched', async () => {
+    const message = await expectReportedAndUntouched(JSON.stringify({ collections: {} }));
+    expect(message).toMatch(/not in a format this app recognizes/);
+    expect(message).not.toMatch(/newer version/);
   });
 
   // chmod 000 has no effect on root, so the unreadable-file case cannot run there.
@@ -76,7 +93,11 @@ describe('startStorage', () => {
         expect(result.ok).toBe(false);
         expect(result.storage).toBeUndefined();
         expect(reportError).toHaveBeenCalledTimes(1);
-        expect(reportError.mock.calls[0][0]).toContain(storeFile);
+        const message = reportError.mock.calls[0][0];
+        expect(message).toContain(storeFile);
+        expect(message).toMatch(/permission/i);
+        expect(message).not.toMatch(/newer version|corrupt|damaged/);
+        expect(message).toContain('The file has not been changed.');
         expect(fs.statSync(storeFile).mode & 0o777).toBe(modeBefore);
         expect(modeBefore).toBe(0o000);
         expect(fs.readdirSync(baseDir).sort()).toEqual(filesBefore);

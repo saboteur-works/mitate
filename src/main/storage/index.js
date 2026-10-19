@@ -116,7 +116,11 @@ function load(file, fs) {
   }
   const state = JSON.parse(text);
   if (!state || state.version !== FORMAT_VERSION) {
-    throw new Error(`unsupported storage format in ${file}`);
+    const err = new Error(`unsupported storage format in ${file}`);
+    err.code = 'STORE_FORMAT_UNSUPPORTED';
+    err.foundVersion = state && Number.isInteger(state.version) ? state.version : undefined;
+    err.supportedVersion = FORMAT_VERSION;
+    throw err;
   }
   return Object.assign(emptyState(), state);
 }
