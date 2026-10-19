@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'" />
     <title>Media Organizer</title>
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <h1 id="heading">Media Organizer</h1>
@@ -19,7 +20,13 @@
       <h2>Collections</h2>
       <ul data-testid="collection-list"></ul>
     </section>
+    <section>
+      <h2>Tree</h2>
+      <div class="tree-view" data-testid="tree-view"></div>
+    </section>
     <script src="renderer.js"></script>
+    <script src="../shared/tree-model.js"></script>
+    <script src="tree-view.js"></script>
     <script src="create-collection.js"></script>
   </body>
 </html>

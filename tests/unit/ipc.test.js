@@ -45,6 +45,14 @@ describe('registerIpc', () => {
     expect(await invoke(CHANNELS.listCollections)).toEqual({ ok: true, views: [] });
   });
 
+  it('returns a collection view by id, or an error when unknown', async () => {
+    const view = { collection: { id: 'c1' }, folders: [], files: [] };
+    const service = { getCollectionView: (id) => (id === 'c1' ? view : null) };
+    const { invoke } = setup({ service });
+    expect(await invoke(CHANNELS.getCollectionView, 'c1')).toEqual({ ok: true, view });
+    expect(await invoke(CHANNELS.getCollectionView, 'nope')).toEqual({ ok: false, error: 'Unknown collection: nope' });
+  });
+
   it('returns service errors as { ok: false, error }', async () => {
     const service = {
       createCollection: async () => { throw new Error('bad name'); },

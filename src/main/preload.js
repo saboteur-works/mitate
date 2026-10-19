@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld('mediaOrganizer', {
   pickFolders: () => ipcRenderer.invoke('folders:pick'),
   createCollection: (name, directories) => ipcRenderer.invoke('collections:create', name, directories),
   listCollections: () => ipcRenderer.invoke('collections:list'),
+  getCollectionView: (collectionId) => ipcRenderer.invoke('collections:getView', collectionId),
 });

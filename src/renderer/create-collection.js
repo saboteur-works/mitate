@@ -39,9 +39,18 @@
         count.dataset.testid = 'collection-folder-count';
         count.textContent = String(folderRecords.length);
         li.append(name, ' (', count, ' folders)');
+        li.addEventListener('click', () => selectCollection(collection.id, li));
         return li;
       }),
     );
+  }
+
+  async function selectCollection(collectionId, li) {
+    const result = await api.getCollectionView(collectionId);
+    if (!result.ok) return showError(result.error);
+    for (const item of collectionList.children) item.classList.remove('collection-selected');
+    li.classList.add('collection-selected');
+    window.TreeView.show(result.view.folders, result.view.files);
   }
 
   async function refreshCollections() {
