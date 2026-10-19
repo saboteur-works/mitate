@@ -79,7 +79,9 @@ async function resolvedStorageFile(storage) {
 
 function contains(dir, file) {
   const rel = path.relative(dir, file);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  // Only '..' itself or '..' + separator escapes dir; a child named '..x' is inside.
+  const outside = rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel);
+  return !outside;
 }
 
 async function isReadableDirectory(dir) {

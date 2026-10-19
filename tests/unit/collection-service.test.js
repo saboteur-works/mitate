@@ -75,6 +75,34 @@ describe('FR-13 storage location', () => {
     await expect(service().createCollection('x', [path.dirname(storageFile)])).rejects.toThrow(/storage location/);
   });
 
+  const serviceAt = (file) =>
+    createCollectionService({ storage: openStorage({ location: { file } }), scan: stubScan });
+
+  it('rejects a storage file inside a child directory named like "..appdata"', async () => {
+    const coll = path.join(work, 'coll');
+    const child = path.join(coll, '..appdata');
+    fs.mkdirSync(child, { recursive: true });
+    await expect(serviceAt(path.join(child, 'store.json')).createCollection('x', [coll])).rejects.toThrow(
+      /storage location/,
+    );
+  });
+
+  it('accepts a storage file in a sibling directory of the collection folder', async () => {
+    const coll = path.join(work, 'coll');
+    const sibling = path.join(work, 'coll-appdata');
+    fs.mkdirSync(coll);
+    fs.mkdirSync(sibling);
+    const created = await serviceAt(path.join(sibling, 'store.json')).createCollection('x', [coll]);
+    expect(created.folders).toHaveLength(1);
+  });
+
+  it('accepts a storage file in the parent directory of the collection folder', async () => {
+    const coll = path.join(work, 'coll');
+    fs.mkdirSync(coll);
+    const created = await serviceAt(path.join(work, 'store.json')).createCollection('x', [coll]);
+    expect(created.folders).toHaveLength(1);
+  });
+
   it('stored collections never contain the storage file', async () => {
     const s = service();
     const created = await s.createCollection('x', [fixture.root]);
