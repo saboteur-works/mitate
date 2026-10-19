@@ -354,7 +354,7 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Done when:** Tests pass showing that create rejects with an error naming EPERM, and that a folder refused after creation is unavailable on load and skipped by rescan.
 **Depends on:** 29
 **Estimate:** 1
-**Notes:** Commit 0603ea7. Covers FR-4, FR-20. Recorded after the work was done; the EPERM refusal is simulated, not produced by macOS. The tests document current behaviour. Whether creation should instead accept a refused folder and mark it unavailable is an open product question; it is not decided here.
+**Notes:** Commit 0603ea7. Covers FR-4, FR-20. Recorded after the work was done; the EPERM refusal is simulated, not produced by macOS. The tests document current behaviour. Decided 2026-10-19 (see Open Questions): creation keeps failing with an error naming the folder and EPERM, and the folder is not added as unavailable; the tests match that decision.
 **Done:** [x]
 
 ## Summary
@@ -364,4 +364,5 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 - Risks: Task 1 (Electron binary download may fail in the sandbox; Playwright's Electron support with Electron 44 is unverified and blocks every e2e task, 13 to 16); Task 7 (external and network volumes need the user's hardware); Task 4 (JSON store scale is unmeasured); Task 14 (virtualized rendering bound is chosen by the implementer); Task 5 (ctime/birthtime/atime ordering is subtle); Tasks 17-26 are review fixes sequenced by shared files (17 first; the rest follow in dependency order; each task cites its review finding number, which differs from the task number); Tasks 27-39 are follow-ups (35-39 recorded as already done), of which 33 and 34 produce measurements only and 28 may find behaviour that needs a product decision about migrating older store formats.
 
 ## Open Questions
-- When the user picks a folder that macOS refuses (EPERM), should creating the collection fail (current behaviour) or add the folder as unavailable? Impact: FR-1, FR-4. Owner: Product owner.
+- [Resolved 2026-10-19] When the user picks a folder that macOS refuses (EPERM), should creating the collection fail (current behaviour) or add the folder as unavailable? Impact: FR-1, FR-4. Owner: Product owner.
+  Answer: Creating the collection keeps failing, with an error naming the folder and EPERM (current behaviour); the folder is NOT added as unavailable. A folder refused after creation is still marked unavailable (FR-4, unchanged).
