@@ -348,20 +348,29 @@ Conventions: every task names the FRs it covers in its Notes. Test commands assu
 **Notes:** Commit a411e5d. Covers FR-1. Recorded after the work was done.
 **Done:** [x]
 
-### Task 39: Cover folders macOS refuses with EPERM
-**What:** Add tests, with the EPERM refusal simulated, that document the current behaviour for a folder macOS refuses to read.
+### Task 39: Cover a folder that cannot be opened for listing (EPERM), simulated
+**What:** Add tests, with the refusal simulated, that document the behaviour for a folder that cannot be opened for listing (EPERM).
 **Files:** tests/unit/collection-service.test.js
-**Done when:** Tests pass showing that create rejects with an error naming EPERM, and that a folder refused after creation is unavailable on load and skipped by rescan.
+**Done when:** Tests pass showing that create rejects with an error naming EPERM when a simulated stat failure occurs, and that a folder refused after creation is unavailable on load and skipped by rescan.
 **Depends on:** 29
 **Estimate:** 1
-**Notes:** Commit 0603ea7. Covers FR-4, FR-20. Recorded after the work was done; the EPERM refusal is simulated, not produced by macOS. The tests document current behaviour. Decided 2026-10-19 (see Open Questions): creation keeps failing with an error naming the folder and EPERM, and the folder is not added as unavailable; the tests match that decision.
+**Notes:** Commit 0603ea7. Covers FR-4, FR-20. Recorded after the work was done. The tests simulated a stat failure. That is not what was measured: listing the drive and creating a folder in it failed. So these tests did not show that the rule holds for a real refused drive. The cause of the refusal is not established (see the measurement doc). Decided 2026-10-19 (see Open Questions): creation keeps failing with an error naming the folder and the code, and the folder is not added as unavailable. The correction is in Task 40.
+**Done:** [x]
+
+### Task 40: Reject folders that can't be opened for listing at creation; second-review fixes
+**What:** Reject folders that can't be opened for listing at creation; second-review fixes.
+**Files:** src/main/collections/service.js, src/main/collections/rescan.js, src/main/ipc.js, tests/unit/collection-service.test.js
+**Done when:** Creation opens each picked folder for listing (opendir, closed without reading entries) and rejects with an error naming the folder and code; a real mode-000 folder (EACCES) and a simulated opendir EPERM with stat succeeding are both rejected and nothing is stored. Load and rescan use the same check. The launch availability check saves flag changes in one write. A rescan of a collection removed mid-scan rejects. ipc.js uses the RESCAN_IN_PROGRESS constant. 5 new or changed tests failed before the fix; unit suite 160 passed, e2e 12 passed. All verified.
+**Depends on:** 39
+**Estimate:** 2
+**Notes:** Commit 6dfbd85. Covers FR-1, FR-4, FR-18, FR-20. Corrects Task 39. The EPERM case is still simulated. Review findings 6 (sequential scans, unmeasured gain) and 7 (rollback copy cost, measured in json-store-scale.md) are deferred. The rescan readability pre-check was kept because whether the scanner returns an empty result for an unreadable top-level folder was not verified.
 **Done:** [x]
 
 ## Summary
-- Total tasks: 39
-- Total estimated effort: 96 points
-- Critical path: 1 → 3 → 8 → 9 → 11 → 13 → 14 → 15 → 16 (tasks 1-16); review-fix chain after 15: 17 → 19 → 20 → 25 → 26; follow-ups after 26: 27 → 29 → 30, 27 → 31 → 32, 21 → 28, measurements 33 (after 26) and 34 (after 9), and done records 28 → 35, 32 → 36 → 38, 31 → 37, 29 → 39
-- Risks: Task 1 (Electron binary download may fail in the sandbox; Playwright's Electron support with Electron 44 is unverified and blocks every e2e task, 13 to 16); Task 7 (external and network volumes need the user's hardware); Task 4 (JSON store scale is unmeasured); Task 14 (virtualized rendering bound is chosen by the implementer); Task 5 (ctime/birthtime/atime ordering is subtle); Tasks 17-26 are review fixes sequenced by shared files (17 first; the rest follow in dependency order; each task cites its review finding number, which differs from the task number); Tasks 27-39 are follow-ups (35-39 recorded as already done), of which 33 and 34 produce measurements only and 28 may find behaviour that needs a product decision about migrating older store formats.
+- Total tasks: 40
+- Total estimated effort: 98 points
+- Critical path: 1 → 3 → 8 → 9 → 11 → 13 → 14 → 15 → 16 (tasks 1-16); review-fix chain after 15: 17 → 19 → 20 → 25 → 26; follow-ups after 26: 27 → 29 → 30, 27 → 31 → 32, 21 → 28, measurements 33 (after 26) and 34 (after 9), and done records 28 → 35, 32 → 36 → 38, 31 → 37, 29 → 39 → 40
+- Risks: Task 1 (Electron binary download may fail in the sandbox; Playwright's Electron support with Electron 44 is unverified and blocks every e2e task, 13 to 16); Task 7 (external and network volumes need the user's hardware); Task 4 (JSON store scale is unmeasured); Task 14 (virtualized rendering bound is chosen by the implementer); Task 5 (ctime/birthtime/atime ordering is subtle); Tasks 17-26 are review fixes sequenced by shared files (17 first; the rest follow in dependency order; each task cites its review finding number, which differs from the task number); Tasks 27-40 are follow-ups (35-40 recorded as already done), of which 33 and 34 produce measurements only and 28 may find behaviour that needs a product decision about migrating older store formats.
 
 ## Open Questions
 - [Resolved 2026-10-19] When the user picks a folder that macOS refuses (EPERM), should creating the collection fail (current behaviour) or add the folder as unavailable? Impact: FR-1, FR-4. Owner: Product owner.
