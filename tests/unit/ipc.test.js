@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 const require = createRequire(import.meta.url);
 const { registerIpc, CHANNELS } = require('../../src/main/ipc.js');
 
-function setup({ dialogResult = { canceled: false, filePaths: ['/a', '/b'] }, service } = {}) {
+function setup({ dialogResult = { canceled: false, filePaths: ['/a', '/b'] }, service, rescanService } = {}) {
   const handlers = new Map();
   const ipcMain = { handle: (channel, fn) => handlers.set(channel, fn) };
   const calls = [];
@@ -18,7 +18,7 @@ function setup({ dialogResult = { canceled: false, filePaths: ['/a', '/b'] }, se
     createCollection: async (name, dirs) => ({ collection: { name }, folders: dirs.map((d) => ({ path: d })), files: [] }),
     loadCollections: async () => [],
   };
-  registerIpc({ ipcMain, dialog, service: svc });
+  registerIpc({ ipcMain, dialog, service: svc, rescanService });
   return { invoke: (ch, ...a) => handlers.get(ch)({}, ...a), calls };
 }
 
@@ -61,5 +61,27 @@ describe('registerIpc', () => {
     const { invoke } = setup({ service });
     expect(await invoke(CHANNELS.createCollection, '', [])).toEqual({ ok: false, error: 'bad name' });
     expect(await invoke(CHANNELS.listCollections)).toEqual({ ok: false, error: 'boom' });
+  });
+
+  it('rescans a collection through the rescan service and splits view from summary', async () => {
+    const summary = { rescanned: ['f1'], skipped: [] };
+    const rescanService = {
+      rescanCollection: async (id) => ({ collection: { id }, folders: [], files: [], summary }),
+    };
+    const { invoke } = setup({ rescanService });
+    expect(await invoke(CHANNELS.rescanCollection, 'c1')).toEqual({
+      ok: true,
+      view: { collection: { id: 'c1' }, folders: [], files: [] },
+      summary,
+    });
+  });
+
+  it('returns rescan errors, and an error when no rescan service is wired', async () => {
+    const failing = { rescanCollection: async () => { throw new Error('unknown collection: x'); } };
+    expect(await setup({ rescanService: failing }).invoke(CHANNELS.rescanCollection, 'x')).toEqual({
+      ok: false,
+      error: 'unknown collection: x',
+    });
+    expect((await setup().invoke(CHANNELS.rescanCollection, 'x')).ok).toBe(false);
   });
 });

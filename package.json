@@ -6,7 +6,7 @@
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
-    "build": "node --check src/main/main.js && node --check src/renderer/renderer.js && node --check src/renderer/create-collection.js && node --check src/main/ipc.js && node --check src/main/preload.js && node --check src/renderer/tree-view.js && node --check src/shared/tree-model.js",
+    "build": "node --check src/main/main.js && node --check src/renderer/renderer.js && node --check src/renderer/create-collection.js && node --check src/main/ipc.js && node --check src/main/preload.js && node --check src/renderer/tree-view.js && node --check src/renderer/rescan-button.js && node --check src/shared/tree-model.js",
     "test": "vitest run",
     "test:e2e": "playwright test"
   },

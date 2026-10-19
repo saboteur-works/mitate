@@ -106,8 +106,14 @@
     relayout();
   }
 
+  // Replaces the data but keeps the expanded folders and scroll position (used after a rescan).
+  function update(folders, files) {
+    tree = TreeModel.buildTree(folders, files);
+    relayout();
+  }
+
   container.addEventListener('scroll', renderWindow);
   container.setAttribute('role', 'tree');
 
-  window.TreeView = { show, clear: () => show([], []) };
+  window.TreeView = { show, update, clear: () => show([], []) };
 })();

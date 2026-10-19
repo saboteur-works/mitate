@@ -51,6 +51,7 @@
     for (const item of collectionList.children) item.classList.remove('collection-selected');
     li.classList.add('collection-selected');
     window.TreeView.show(result.view.folders, result.view.files);
+    document.dispatchEvent(new CustomEvent('collection-selected', { detail: { collectionId } }));
   }
 
   async function refreshCollections() {

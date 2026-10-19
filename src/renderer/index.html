@@ -22,11 +22,14 @@
     </section>
     <section>
       <h2>Tree</h2>
+      <button type="button" data-testid="rescan" disabled>Rescan</button>
+      <span data-testid="rescan-status" role="status"></span>
       <div class="tree-view" data-testid="tree-view"></div>
     </section>
     <script src="renderer.js"></script>
     <script src="../shared/tree-model.js"></script>
     <script src="tree-view.js"></script>
     <script src="create-collection.js"></script>
+    <script src="rescan-button.js"></script>
   </body>
 </html>

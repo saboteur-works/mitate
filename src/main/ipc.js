@@ -12,6 +12,9 @@
  *                          view = { collection, folders, files }; file records of
  *                          unavailable folders carry unavailable: true. Reads the
  *                          stored index; availability is refreshed by collections:list.
+ *   collections:rescan  (collectionId) -> { ok: true, view, summary } | { ok: false, error }
+ *                          user-triggered rescan (FR-20); needs rescanService, else
+ *                          { ok: false, error }. Never invoked on launch.
  *
  * Service errors are returned as { ok: false, error } so the renderer can show
  * the message without Electron's "Error invoking remote method" prefix.
@@ -22,11 +25,12 @@ const CHANNELS = {
   createCollection: 'collections:create',
   listCollections: 'collections:list',
   getCollectionView: 'collections:getView',
+  rescanCollection: 'collections:rescan',
 };
 
 const PICKER_PROPERTIES = ['openDirectory', 'multiSelections'];
 
-function registerIpc({ ipcMain, dialog, service, getWindow = () => null }) {
+function registerIpc({ ipcMain, dialog, service, rescanService = null, getWindow = () => null }) {
   async function guard(fn) {
     try {
       return { ok: true, ...(await fn()) };
@@ -54,6 +58,13 @@ function registerIpc({ ipcMain, dialog, service, getWindow = () => null }) {
       const view = service.getCollectionView(collectionId);
       if (!view) throw new Error(`Unknown collection: ${String(collectionId)}`);
       return { view };
+    }));
+
+  ipcMain.handle(CHANNELS.rescanCollection, (_event, collectionId) =>
+    guard(async () => {
+      if (!rescanService) throw new Error('Rescan is not available');
+      const { summary, ...view } = await rescanService.rescanCollection(collectionId);
+      return { view, summary };
     }));
 }
 
