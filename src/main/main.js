@@ -22,6 +22,17 @@ function createWindow() {
   return win;
 }
 
+// The app's one window. Dialogs attach to it whether or not it has focus (the
+// user may have clicked another app while the folder picker was opening).
+let mainWindow = null;
+
+function openMainWindow() {
+  mainWindow = createWindow();
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
 app.whenReady().then(async () => {
   const started = await startStorage({
     baseDir: app.getPath('userData'),
@@ -35,10 +46,10 @@ app.whenReady().then(async () => {
   const storage = started.storage;
   const service = createCollectionService({ storage });
   const rescanService = createRescanService({ storage });
-  registerIpc({ ipcMain, dialog, service, rescanService, getWindow: () => BrowserWindow.getFocusedWindow() });
-  createWindow();
+  registerIpc({ ipcMain, dialog, service, rescanService, getWindow: () => mainWindow });
+  openMainWindow();
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) openMainWindow();
   });
 });
 

@@ -88,6 +88,13 @@ test('creates a collection from picked folders; picker is directory-only; empty 
     await app.evaluate(({ dialog }, folderPaths) => {
       dialog.showOpenDialog = async (...args) => {
         globalThis.__lastDialogOptions = args[args.length - 1];
+        // Was the picker attached to the app window? (The window has no focus
+        // in a background test run, as when the user has clicked another app.)
+        const parent = args.length > 1 ? args[0] : null;
+        globalThis.__dialogParentIsAppWindow =
+          parent !== null &&
+          !parent.isDestroyed() &&
+          parent.webContents.getURL().endsWith('/src/renderer/index.html');
         return { canceled: false, filePaths: folderPaths };
       };
     }, paths);
@@ -122,6 +129,8 @@ test('creates a collection from picked folders; picker is directory-only; empty 
     const options = await app.evaluate(() => globalThis.__lastDialogOptions);
     expect(options.properties).toContain('openDirectory');
     expect(options.properties).not.toContain('openFile');
+    // ...and attached to the app window even though it isn't focused.
+    expect(await app.evaluate(() => globalThis.__dialogParentIsAppWindow)).toBe(true);
 
     // The page offers no file input.
     await expect(window.locator('input[type="file"]')).toHaveCount(0);
