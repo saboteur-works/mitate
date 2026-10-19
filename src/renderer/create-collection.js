@@ -68,15 +68,29 @@
     renderFolders();
   });
 
+  // True while a create is in flight. The button is disabled too, but the flag
+  // also covers a click event that was already queued before the disable.
+  let creating = false;
+
   createButton.addEventListener('click', async () => {
+    if (creating) return;
     showError('');
     if (nameInput.value.trim() === '') return showError('Collection name must not be empty');
-    const result = await api.createCollection(nameInput.value, folders);
-    if (!result.ok) return showError(result.error);
-    folders = [];
-    nameInput.value = '';
-    renderFolders();
-    await refreshCollections();
+    creating = true;
+    createButton.disabled = true;
+    try {
+      const result = await api.createCollection(nameInput.value, folders);
+      if (!result.ok) return showError(result.error);
+      folders = [];
+      nameInput.value = '';
+      renderFolders();
+      await refreshCollections();
+    } catch (err) {
+      showError(err && err.message ? err.message : String(err));
+    } finally {
+      creating = false;
+      createButton.disabled = false;
+    }
   });
 
   refreshCollections();
