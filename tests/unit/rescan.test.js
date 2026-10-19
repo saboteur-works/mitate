@@ -278,3 +278,80 @@ describe('launch behaviour', () => {
     expect(loaded[0].files.map((f) => f.name)).toEqual(['one.jpg']);
   });
 });
+
+describe('rescan writes the store once (FR-18)', () => {
+  const { createCountingFs } = require('../support/counting-fs.js');
+
+  function countingSetup() {
+    const counter = createCountingFs();
+    const counted = openStorage({
+      location: { file: path.join(work, 'counted', 'store.json') },
+      fs: counter.impl,
+    });
+    return { counter, counted };
+  }
+  const folderWith = (prefix) => {
+    const dir = fs.mkdtempSync(path.join(work, prefix));
+    fs.writeFileSync(path.join(dir, 'one.jpg'), 'x');
+    return dir;
+  };
+  const createVia = (storage, dirs) =>
+    createCollectionService({ storage, scan: runScan }).createCollection('c', dirs);
+
+  it('rescans several folders (one with a flag change) in exactly one write', async () => {
+    const { counter, counted } = countingSetup();
+    const created = await createVia(counted, [folderWith('w1-'), folderWith('w2-'), folderWith('w3-')]);
+    counted.setFolderUnavailable(created.folders[1].id, true);
+    counter.reset();
+
+    const result = await createRescanService({ storage: counted }).rescanCollection(created.collection.id);
+    expect(result.summary.rescanned).toHaveLength(3);
+    expect(counter.renames).toBe(1);
+    expect(counted.getFolder(created.folders[1].id).unavailable).toBe(false);
+    expect(fs.readdirSync(path.dirname(counted.getLocation()))).toEqual(['store.json']);
+  });
+
+  it('writes once when a skipped folder is newly flagged alongside a rescanned one', async () => {
+    const { counter, counted } = countingSetup();
+    const gone = folderWith('w4-');
+    const created = await createVia(counted, [gone, folderWith('w5-')]);
+    fs.rmSync(gone, { recursive: true });
+    counter.reset();
+    await createRescanService({ storage: counted }).rescanCollection(created.collection.id);
+    expect(counter.renames).toBe(1);
+  });
+
+  it('writes nothing when every folder is skipped and no flag changes', async () => {
+    const { counter, counted } = countingSetup();
+    const gone = folderWith('w6-');
+    const created = await createVia(counted, [gone]);
+    fs.rmSync(gone, { recursive: true });
+    counted.setFolderUnavailable(created.folders[0].id, true); // already flagged
+    counter.reset();
+    const result = await createRescanService({ storage: counted }).rescanCollection(created.collection.id);
+    expect(result.summary.skipped).toEqual([created.folders[0].id]);
+    expect(counter.renames).toBe(0);
+  });
+
+  it('writes nothing and keeps the stored file when applying the results fails', async () => {
+    const { counter, counted } = countingSetup();
+    const created = await createVia(counted, [folderWith('w7-'), folderWith('w8-')]);
+    const before = fs.readFileSync(counted.getLocation());
+    counter.reset();
+    let n = 0;
+    const flaky = {
+      ...counted,
+      replaceFolderIndex: (...a) => {
+        if (++n === 2) throw new Error('index failed');
+        return counted.replaceFolderIndex(...a);
+      },
+    };
+    const id = created.collection.id;
+    const svc = createRescanService({ storage: flaky });
+    await expect(svc.rescanCollection(id)).rejects.toThrow('index failed');
+    expect(counter.renames).toBe(0);
+    expect(fs.readFileSync(counted.getLocation()).equals(before)).toBe(true);
+    // a later rescan is not blocked by a leaked in-flight marker
+    await expect(svc.rescanCollection(id)).resolves.toBeDefined();
+  });
+});

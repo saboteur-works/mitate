@@ -41,7 +41,22 @@
  *   FolderAccess              // per-folder access data (FR-3); an opaque
  *                             // object, e.g. a future security-scoped bookmark
  *
- * API (returned by openStorage): getLocation, listCollections, getCollection,
+ * Transactions (FR-18): transaction(fn) runs fn synchronously (an async fn is
+ * rejected and rolled back) with the same mutators applied in memory only, then
+ * persists the whole state in exactly ONE write-then-rename (temp file in the
+ * store's directory, renamed over the store file; the temp file is removed on
+ * failure). If fn made no mutation nothing is written. If fn throws, or the
+ * write fails, the in-memory state is restored from a deep snapshot taken
+ * before fn, nothing is written and the stored file is untouched. Reads inside
+ * fn see the uncommitted changes. Nested transaction calls throw. Mutators
+ * called outside a transaction persist immediately, one write each. Returns
+ * fn's result.
+ *
+ * Test seam: config.fs optionally overrides any of mkdirSync, writeFileSync,
+ * renameSync, rmSync, readFileSync (default: node:fs), so tests can count the
+ * writes of the store file.
+ *
+ * API (returned by openStorage): getLocation, transaction, listCollections, getCollection,
  * putCollection, removeCollection (cascades to folders, index, access),
  * listFolders(collectionId?), getFolder, putFolder, setFolderUnavailable,
  * removeFolder (cascades), getIndex({collectionId?, folderId?}),
@@ -91,7 +106,7 @@ function emptyState() {
   return { version: FORMAT_VERSION, collections: {}, folders: {}, index: {}, access: {} };
 }
 
-function load(file) {
+function load(file, fs) {
   let text;
   try {
     text = fs.readFileSync(file, 'utf8');
@@ -106,7 +121,7 @@ function load(file) {
   return Object.assign(emptyState(), state);
 }
 
-function save(file, state) {
+function save(file, state, fs) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
   try {
@@ -126,8 +141,43 @@ function requireString(value, label) {
 
 function openStorage(config) {
   const file = resolveStorageFile(config);
-  const state = load(file);
-  const commit = () => save(file, state);
+  // Optional seam (tests): config.fs overrides any of mkdirSync, writeFileSync,
+  // renameSync, rmSync, readFileSync; everything else is the real node:fs.
+  const fsImpl = Object.assign({}, fs, (config && config.fs) || {});
+  let state = load(file, fsImpl);
+  let inTransaction = false;
+  let dirty = false;
+  // Every mutator ends with commit(). Outside a transaction it persists at
+  // once; inside one it only marks the in-memory state as changed.
+  const commit = () => {
+    if (inTransaction) dirty = true;
+    else save(file, state, fsImpl);
+  };
+
+  function transaction(fn) {
+    if (typeof fn !== 'function') throw new Error('transaction requires a function');
+    if (inTransaction) throw new Error('nested transactions are not supported');
+    const snapshot = copy(state);
+    inTransaction = true;
+    dirty = false;
+    try {
+      const result = fn();
+      if (result && typeof result.then === 'function') {
+        throw new Error('transaction callback must be synchronous');
+      }
+      if (dirty) {
+        inTransaction = false;
+        save(file, state, fsImpl);
+      }
+      return result;
+    } catch (err) {
+      state = snapshot;
+      throw err;
+    } finally {
+      inTransaction = false;
+      dirty = false;
+    }
+  }
 
   function requireFolder(folderId) {
     const folder = state.folders[folderId];
@@ -143,6 +193,7 @@ function openStorage(config) {
 
   return {
     getLocation: () => file,
+    transaction,
 
     listCollections: () => copy(Object.values(state.collections)),
     getCollection: (id) => copy(state.collections[id]),

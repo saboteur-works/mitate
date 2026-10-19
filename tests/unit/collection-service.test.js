@@ -259,3 +259,56 @@ describe('read-only (FR-13)', () => {
     expect(readonly.assert(before, after)).toBeDefined();
   });
 });
+
+describe('createCollection writes the store once (FR-18)', () => {
+  const { createCountingFs } = require('../support/counting-fs.js');
+
+  const folders = (n) =>
+    Array.from({ length: n }, (_, i) => {
+      const d = path.join(work, `src-${i}`);
+      fs.mkdirSync(d);
+      return d;
+    });
+
+  for (const n of [1, 3]) {
+    it(`persists a collection of ${n} folder(s) in exactly one write`, async () => {
+      const counter = createCountingFs();
+      const storage = openStorage({ location: { file: storageFile }, fs: counter.impl });
+      const svc = createCollectionService({ storage, scan: stubScan });
+      const view = await svc.createCollection('c', folders(n));
+      expect(counter.renames).toBe(1);
+      const reopened = openStorage({ location: { file: storageFile } });
+      expect(reopened.listFolders(view.collection.id)).toHaveLength(n);
+      expect(reopened.getIndex({ collectionId: view.collection.id })).toHaveLength(n);
+      expect(fs.readdirSync(path.dirname(storageFile))).toEqual(['store.json']);
+    });
+  }
+
+  it('records unavailable folders in the same single write', async () => {
+    const counter = createCountingFs();
+    const storage = openStorage({ location: { file: storageFile }, fs: counter.impl });
+    const failing = async () => {
+      throw new Error('denied');
+    };
+    const view = await createCollectionService({ storage, scan: failing }).createCollection('c', folders(2));
+    expect(counter.renames).toBe(1);
+    const reopened = openStorage({ location: { file: storageFile } });
+    expect(reopened.listFolders(view.collection.id).every((f) => f.unavailable)).toBe(true);
+  });
+
+  it('writes nothing and stores nothing when a mutation fails mid-creation', async () => {
+    const counter = createCountingFs();
+    const storage = openStorage({ location: { file: storageFile }, fs: counter.impl });
+    const broken = {
+      ...storage,
+      replaceFolderIndex: () => {
+        throw new Error('index failed');
+      },
+    };
+    const svc = createCollectionService({ storage: broken, scan: stubScan });
+    await expect(svc.createCollection('c', folders(2))).rejects.toThrow('index failed');
+    expect(counter.renames).toBe(0);
+    expect(storage.listCollections()).toEqual([]);
+    expect(storage.listFolders()).toEqual([]);
+  });
+});

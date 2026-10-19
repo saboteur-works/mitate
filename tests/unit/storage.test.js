@@ -150,3 +150,138 @@ describe('storage module surface', () => {
     for (const value of Object.values(store)) expect(typeof value).toBe('function');
   });
 });
+
+describe('storage.transaction (FR-18)', () => {
+  const { createCountingFs } = require('../support/counting-fs.js');
+  const open = (f, counter) => openStorage({ location: { file: f }, ...(counter ? { fs: counter.impl } : {}) });
+
+  it('persists every mutation of the callback in exactly one write and survives reopening', () => {
+    const f = file(dir);
+    const counter = createCountingFs();
+    const store = open(f, counter);
+    store.transaction(() => populate(store, '/media/photos'));
+    expect(counter.renames).toBe(1);
+    const reopened = open(f);
+    expect(reopened.listCollections()).toEqual(store.listCollections());
+    expect(reopened.listFolders()).toEqual(store.listFolders());
+    expect(reopened.getIndex()).toEqual(store.getIndex());
+    expect(reopened.getFolderAccess('f1')).toEqual({ kind: 'plain-path' });
+    expect(reopened.getIndex()).toHaveLength(1);
+  });
+
+  it('the same mutations outside a transaction still write once each', () => {
+    const counter = createCountingFs();
+    populate(open(file(dir), counter), '/media/photos');
+    expect(counter.renames).toBe(4);
+  });
+
+  it('returns the callback result', () => {
+    const store = open(file(dir));
+    expect(store.transaction(() => 42)).toBe(42);
+  });
+
+  it('writes nothing when the callback makes no mutation', () => {
+    const counter = createCountingFs();
+    const store = open(file(dir), counter);
+    store.transaction(() => store.listCollections());
+    expect(counter.renames).toBe(0);
+  });
+
+  it('throwing rolls back memory, writes nothing and leaves the stored file byte-identical', () => {
+    const f = file(dir);
+    const counter = createCountingFs();
+    const store = open(f, counter);
+    populate(store, '/media/photos');
+    const bytesBefore = fs.readFileSync(f);
+    const collectionsBefore = store.listCollections();
+    const foldersBefore = store.listFolders();
+    const indexBefore = store.getIndex();
+    counter.reset();
+
+    expect(() =>
+      store.transaction(() => {
+        store.putCollection({ id: 'c2', name: 'Other', folderIds: [], createdAt: '2026-10-18T00:00:00.000Z' });
+        store.setFolderUnavailable('f1', true);
+        store.replaceFolderIndex('f1', []);
+        store.setFolderAccess('f1', { kind: 'changed' });
+        store.removeCollection('c1');
+        throw new Error('boom');
+      })
+    ).toThrow('boom');
+
+    expect(counter.events).toEqual([]);
+    expect(fs.readFileSync(f).equals(bytesBefore)).toBe(true);
+    expect(store.listCollections()).toEqual(collectionsBefore);
+    expect(store.listFolders()).toEqual(foldersBefore);
+    expect(store.getIndex()).toEqual(indexBefore);
+    expect(store.getFolderAccess('f1')).toEqual({ kind: 'plain-path' });
+    expect(fs.readdirSync(path.dirname(f))).toEqual(['store.json']);
+  });
+
+  it('a failing mutator inside the callback (unknown folder) rolls back earlier mutations', () => {
+    const f = file(dir);
+    const store = open(f);
+    populate(store, '/media/photos');
+    const bytesBefore = fs.readFileSync(f);
+    expect(() =>
+      store.transaction(() => {
+        store.setFolderUnavailable('f1', true);
+        store.setFolderUnavailable('nope', true);
+      })
+    ).toThrow(/unknown folder/);
+    expect(store.getFolder('f1').unavailable).toBe(false);
+    expect(fs.readFileSync(f).equals(bytesBefore)).toBe(true);
+  });
+
+  it('rejects a nested transaction and rolls the outer one back', () => {
+    const f = file(dir);
+    const counter = createCountingFs();
+    const store = open(f, counter);
+    expect(() =>
+      store.transaction(() => {
+        store.putCollection({ id: 'c1', name: 'C', folderIds: [], createdAt: '2026-10-18T00:00:00.000Z' });
+        store.transaction(() => {});
+      })
+    ).toThrow(/nested/i);
+    expect(store.listCollections()).toEqual([]);
+    expect(counter.renames).toBe(0);
+    store.putCollection({ id: 'c1', name: 'C', folderIds: [], createdAt: '2026-10-18T00:00:00.000Z' });
+    expect(counter.renames).toBe(1);
+  });
+
+  it('rejects an async callback and does not leave the transaction open', () => {
+    const store = open(file(dir));
+    expect(() => store.transaction(async () => {})).toThrow(/synchronous/);
+    expect(() => store.transaction(() => {})).not.toThrow();
+  });
+
+  it('a failed write at commit rolls memory back and removes the temp file', () => {
+    const f = file(dir);
+    const failing = {
+      renameSync() {
+        throw new Error('rename failed');
+      },
+    };
+    const store = openStorage({ location: { file: f }, fs: failing });
+    expect(() => store.transaction(() => store.putCollection({ id: 'c1', name: 'C', folderIds: [] }))).toThrow(
+      'rename failed'
+    );
+    expect(store.listCollections()).toEqual([]);
+    expect(fs.readdirSync(path.dirname(f))).toEqual([]);
+  });
+
+  it('writes through a temp file in the same directory, renamed over store.json, leaving no temp files', () => {
+    const f = file(dir);
+    const counter = createCountingFs();
+    const store = open(f, counter);
+    store.transaction(() => populate(store, '/media/photos'));
+    expect(counter.events.map((e) => e.op)).toEqual(['write', 'rename']);
+    const [write, rename] = counter.events;
+    expect(write.file).toBe(rename.from);
+    expect(write.file).not.toBe(f);
+    expect(rename.to).toBe(f);
+    expect(rename.sameDir).toBe(true);
+    expect(rename.tempExistedBeforeRename).toBe(true);
+    expect(fs.readdirSync(path.dirname(f))).toEqual(['store.json']);
+  });
+});

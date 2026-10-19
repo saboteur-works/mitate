@@ -24,6 +24,9 @@
  *   non-blank; directories non-empty; each path absolute and an existing
  *   directory (files, missing and relative paths are rejected); duplicates
  *   (after path.resolve) are collapsed.
+ * - FR-18: createCollection awaits every scan first, then stores the
+ *   collection, its folders, their indexes and unavailable flags inside one
+ *   storage.transaction, i.e. one write of the store regardless of folder count.
  * - FR-13: a directory that contains the storage file is rejected (compared
  *   by realpath). The service only reads collection folders (stat, access,
  *   scan); it never writes there.
@@ -146,16 +149,20 @@ function createCollectionService({ storage, scan = defaultScan, idGenerator = cr
     const scanned = [];
     for (const dir of dirs) scanned.push({ id: idGenerator(), dir, ...(await scanOne(dir)) });
 
-    storage.putCollection({
-      id: collectionId,
-      name: cleanName,
-      folderIds: scanned.map((s) => s.id),
-      createdAt: new Date().toISOString(),
+    // All awaits are done; apply every record in one synchronous transaction so
+    // the store is written once (FR-18) and a failure leaves nothing behind.
+    storage.transaction(() => {
+      storage.putCollection({
+        id: collectionId,
+        name: cleanName,
+        folderIds: scanned.map((s) => s.id),
+        createdAt: new Date().toISOString(),
+      });
+      for (const s of scanned) {
+        storage.putFolder({ id: s.id, collectionId, path: s.dir, unavailable: s.unavailable });
+        storage.replaceFolderIndex(s.id, s.records);
+      }
     });
-    for (const s of scanned) {
-      storage.putFolder({ id: s.id, collectionId, path: s.dir, unavailable: s.unavailable });
-      storage.replaceFolderIndex(s.id, s.records);
-    }
     return view(storage.getCollection(collectionId));
   }
 

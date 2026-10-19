@@ -23,6 +23,13 @@
  *   while the scan ran, nothing is written and it is reported in
  *   `summary.skipped`. If the scan rejects, the folder is flagged unavailable,
  *   its stored files are kept, and it is reported in `skipped`.
+ * - FR-18: all scans are awaited first; then every index replacement and
+ *   flag change of the rescan is applied in one synchronous storage.transaction,
+ *   re-reading each folder's state inside it. A rescan that scans at least one
+ *   folder writes the store exactly once. A rescan where every folder is
+ *   skipped and no flag changes (e.g. already-unavailable folders stay
+ *   unavailable) makes no mutation and writes zero times. If applying fails,
+ *   nothing is written and the in-memory state is rolled back.
  * - In-flight rescans are tracked per collection id. A second rescanCollection
  *   of the same collection while the first is pending rejects at once with an
  *   Error (code RESCAN_IN_PROGRESS) and does not run discovery; a rescan of a
@@ -45,28 +52,27 @@ function createRescanService({ storage, scan = defaultScan } = {}) {
   const views = createCollectionService({ storage, scan });
   const inFlight = new Set();
 
-  function markUnavailable(folder) {
-    if (!folder.unavailable) storage.setFolderUnavailable(folder.id, true);
+  // Awaited phase (no storage writes): decide what to do for one folder.
+  // Returns { folder, status: 'scan', records } or { folder, status: 'unavailable' }.
+  async function inspectFolder(folder) {
+    if (!(await isReadableDirectory(folder.path))) return { folder, status: 'unavailable' };
+    try {
+      return { folder, status: 'scan', records: await scan(folder.path) };
+    } catch {
+      return { folder, status: 'unavailable' };
+    }
   }
 
-  // Returns true when the folder was rescanned, false when it was skipped.
-  async function rescanFolder(folder) {
-    if (!(await isReadableDirectory(folder.path))) {
-      markUnavailable(folder);
-      return false;
-    }
-    let records;
-    try {
-      records = await scan(folder.path);
-    } catch {
-      markUnavailable(folder);
-      return false;
-    }
-    // Re-read after the await: the snapshot in `folder` may be stale if another
-    // operation changed the record while the scan ran. If the folder was removed
-    // from storage meanwhile, write nothing and report it skipped.
+  // Synchronous phase, run inside the transaction. Re-reads the folder from
+  // storage (the pre-await snapshot may be stale). Returns true when the folder
+  // was rescanned, false when skipped.
+  function applyResult({ folder, status, records }) {
     const current = storage.getFolder(folder.id);
-    if (!current) return false;
+    if (!current) return false; // removed from storage while scanning: write nothing
+    if (status === 'unavailable') {
+      if (!current.unavailable) storage.setFolderUnavailable(folder.id, true);
+      return false;
+    }
     storage.replaceFolderIndex(folder.id, records);
     if (current.unavailable) storage.setFolderUnavailable(folder.id, false);
     return true;
@@ -83,10 +89,13 @@ function createRescanService({ storage, scan = defaultScan } = {}) {
     inFlight.add(collectionId);
     try {
       const summary = { rescanned: [], skipped: [] };
-      for (const folder of storage.listFolders(collectionId)) {
-        const done = await rescanFolder(folder);
-        (done ? summary.rescanned : summary.skipped).push(folder.id);
-      }
+      const results = [];
+      for (const folder of storage.listFolders(collectionId)) results.push(await inspectFolder(folder));
+      storage.transaction(() => {
+        for (const result of results) {
+          (applyResult(result) ? summary.rescanned : summary.skipped).push(result.folder.id);
+        }
+      });
       return { ...views.getCollectionView(collectionId), summary };
     } finally {
       inFlight.delete(collectionId);
