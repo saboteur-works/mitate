@@ -1191,3 +1191,98 @@ describe('addFolder', () => {
     expect(guard.isBusy(one.collection.id)).toBe(false);
   });
 });
+
+describe('createCollection overlap confirmation', () => {
+  const mk = (...parts) => {
+    const d = path.join(work, ...parts);
+    fs.mkdirSync(d, { recursive: true });
+    return d;
+  };
+  const text = (req) => `${req.message} ${req.detail}`;
+
+  function setup({ confirm } = {}) {
+    const calls = { scans: [], confirms: [] };
+    const scan = async (dir) => {
+      calls.scans.push(dir);
+      return stubScan(dir);
+    };
+    const wrapped = confirm === undefined ? undefined : async (req) => {
+      calls.confirms.push(req);
+      return confirm(req);
+    };
+    const storage = openStorage({ location: { file: storageFile } });
+    const svc = createCollectionService({ storage, scan, confirm: wrapped });
+    return { svc, calls };
+  }
+  const stored = () => openStorage({ location: { file: storageFile } }).listCollections();
+
+  it('asks once naming the overlapping folder; confirm true creates with both folders', async () => {
+    const outer = mk('outer');
+    const inner = mk('outer', 'inner');
+    const { svc, calls } = setup({ confirm: () => true });
+    const view = await svc.createCollection('C', [outer, inner]);
+    expect(calls.confirms).toHaveLength(1);
+    expect(text(calls.confirms[0])).toContain(inner);
+    expect(text(calls.confirms[0])).toContain(outer);
+    expect(view.folders.map((f) => f.path)).toEqual([outer, inner]);
+  });
+
+  it('confirm false resolves canceled; nothing scanned or stored', async () => {
+    const outer = mk('outer');
+    const inner = mk('outer', 'inner');
+    const { svc, calls } = setup({ confirm: () => false });
+    expect(await svc.createCollection('C', [outer, inner])).toEqual({ canceled: true });
+    expect(calls.confirms).toHaveLength(1);
+    expect(calls.scans).toEqual([]);
+    expect(stored()).toEqual([]);
+  });
+
+  it('only confirm === true proceeds', async () => {
+    const outer = mk('outer');
+    const inner = mk('outer', 'inner');
+    const { svc } = setup({ confirm: () => 'yes' });
+    expect(await svc.createCollection('C', [outer, inner])).toEqual({ canceled: true });
+    expect(stored()).toEqual([]);
+  });
+
+  it('three folders with two overlapping pairs ask once, naming the first and counting the other', async () => {
+    const a = mk('a');
+    const a1 = mk('a', 'one');
+    const a2 = mk('a', 'two');
+    const { svc, calls } = setup({ confirm: () => true });
+    await svc.createCollection('C', [a, a1, a2]);
+    expect(calls.confirms).toHaveLength(1);
+    const t = text(calls.confirms[0]);
+    expect(t).toContain(a1);
+    expect(t).not.toContain(a2);
+    expect(t).toMatch(/and 1 other overlapping pair/);
+  });
+
+  it('non-overlapping folders and collapsed duplicates do not ask', async () => {
+    const x = mk('x');
+    const y = mk('y');
+    const { svc, calls } = setup({ confirm: () => false });
+    expect((await svc.createCollection('C', [x, y])).folders).toHaveLength(2);
+    const v = await svc.createCollection('D', [x, x, path.join(x, '..', 'x')]);
+    expect(v.folders).toHaveLength(1);
+    expect(calls.confirms).toHaveLength(0);
+  });
+
+  it('the same folder in two separate collections is accepted without a prompt', async () => {
+    const x = mk('x');
+    const { svc, calls } = setup({ confirm: () => false });
+    await svc.createCollection('A', [x]);
+    await svc.createCollection('B', [x]);
+    expect(calls.confirms).toHaveLength(0);
+    expect(stored()).toHaveLength(2);
+  });
+
+  it('with no confirm injected an overlapping creation resolves canceled', async () => {
+    const outer = mk('outer');
+    const inner = mk('outer', 'inner');
+    const { svc, calls } = setup();
+    expect(await svc.createCollection('C', [outer, inner])).toEqual({ canceled: true });
+    expect(calls.scans).toEqual([]);
+    expect(stored()).toEqual([]);
+  });
+});

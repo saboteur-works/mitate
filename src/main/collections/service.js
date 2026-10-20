@@ -14,9 +14,11 @@
  *                  Pass the guard shared with the rescan service so the two
  *                  exclude each other.
  *     confirm:     async (request) -> boolean; default none (no confirmation
- *                  is ever granted); used by deleteCollection and addFolder.
+ *                  is ever granted); used by createCollection, deleteCollection and addFolder.
  *
- *   createCollection(name, directories) -> Promise<{collection, folders, files}>
+ *   createCollection(name, directories) -> Promise<{collection, folders, files} | {canceled: true}>
+ *                                          (picked folders that overlap each other need
+ *                                          confirm === true, before any scan)
  *   loadCollections()                   -> Promise<Array<{collection, folders, files}>>
  *                                          (listCollectionSummaries, then a view per collection)
  *   listCollectionSummaries()           -> Promise<Array<{id, name, folderCount,
@@ -171,8 +173,35 @@ function createCollectionService({
     return unique;
   }
 
+  // FR-8 at creation: the first overlapping pair among the picked folders
+  // (in pick order), worded by describeOverlap, plus a count of the other
+  // overlapping pairs. null when no two folders overlap.
+  function describeCreationOverlap(dirs) {
+    const lines = [];
+    for (let j = 1; j < dirs.length; j++) {
+      for (let i = 0; i < j; i++) {
+        const line = describeOverlap(findOverlaps(dirs[j], [dirs[i]]), dirs[j]);
+        if (line) lines.push(line);
+      }
+    }
+    if (lines.length === 0) return null;
+    const others = lines.length - 1;
+    return others === 0 ? lines[0] : `${lines[0]} (and ${others} other overlapping ${others === 1 ? 'pair' : 'pairs'}.)`;
+  }
+
   async function createCollection(name, directories) {
     const { name: cleanName, dirs } = await validate(name, directories);
+    const overlap = describeCreationOverlap(dirs);
+    if (overlap) {
+      const confirmed = typeof confirm === 'function' && (await confirm({
+        title: 'Create collection',
+        message: `Create "${cleanName}" with overlapping folders?`,
+        detail: `${overlap} `
+          + 'No files on disk are touched, deleted or moved.',
+        confirmLabel: 'Create collection',
+      }));
+      if (confirmed !== true) return { canceled: true };
+    }
     const collectionId = idGenerator();
     const scanned = [];
     for (const dir of dirs) scanned.push({ id: idGenerator(), dir, ...(await scanFolder(scan, dir)) });

@@ -106,7 +106,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-8 (creation case) and FR-6 (same folder in several collections at creation). A folder given twice is de-duplicated by the existing `path.resolve` collapse and is not an overlap prompt at creation; an identical path matters only against a collection's existing folders. The overlap check runs after validation and before any scan.
 **POS:** task_5ad00b33
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 10: Collection view orders folders and derives resolvedPath
 **What:** Make `collectionView` return folders in `CollectionRecord.folderIds` order (unlisted folders last, by id) and add a derived, non-persisted `resolvedPath` to each returned folder.
