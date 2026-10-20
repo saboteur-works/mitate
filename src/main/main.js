@@ -1,11 +1,12 @@
 'use strict';
 
 const path = require('node:path');
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const { openStorage } = require('./storage/index.js');
 const { startStorage } = require('./startup.js');
 const { createCollectionService } = require('./collections/service.js');
 const { createRescanService } = require('./collections/rescan.js');
+const { createRevealer } = require('./reveal.js');
 const { registerIpc } = require('./ipc.js');
 
 function createWindow() {
@@ -46,7 +47,8 @@ app.whenReady().then(async () => {
   const storage = started.storage;
   const service = createCollectionService({ storage });
   const rescanService = createRescanService({ storage });
-  registerIpc({ ipcMain, dialog, service, rescanService, getWindow: () => mainWindow });
+  const { revealFile } = createRevealer({ shell });
+  registerIpc({ ipcMain, dialog, service, rescanService, revealFile, getWindow: () => mainWindow });
   openMainWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) openMainWindow();

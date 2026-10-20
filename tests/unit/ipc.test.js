@@ -1,10 +1,11 @@
+import fs from 'node:fs';
 import { createRequire } from 'node:module';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const { registerIpc, CHANNELS } = require('../../src/main/ipc.js');
 
-function setup({ dialogResult = { canceled: false, filePaths: ['/a', '/b'] }, service, rescanService } = {}) {
+function setup({ dialogResult = { canceled: false, filePaths: ['/a', '/b'] }, service, rescanService, revealFile } = {}) {
   const handlers = new Map();
   const ipcMain = { handle: (channel, fn) => handlers.set(channel, fn) };
   const calls = [];
@@ -18,7 +19,7 @@ function setup({ dialogResult = { canceled: false, filePaths: ['/a', '/b'] }, se
     createCollection: async (name, dirs) => ({ collection: { id: `id-${name}`, name }, folders: dirs.map((d) => ({ path: d })), files: [] }),
     listCollectionSummaries: async () => [],
   };
-  registerIpc({ ipcMain, dialog, service: svc, rescanService });
+  registerIpc({ ipcMain, dialog, service: svc, rescanService, revealFile });
   return { invoke: (ch, ...a) => handlers.get(ch)({}, ...a), calls };
 }
 
@@ -95,6 +96,57 @@ describe('registerIpc', () => {
       ok: false,
       error: 'already running',
       code: 'RESCAN_IN_PROGRESS',
+    });
+  });
+
+  describe('files:reveal', () => {
+    const indexed = '/Volumes/Media/a.jpg';
+    const service = { findIndexedFile: (p) => (p === indexed ? { path: p } : null) };
+
+    it('uses the channel name files:reveal', () => {
+      expect(CHANNELS.revealFile).toBe('files:reveal');
+    });
+
+    it('reveals an indexed path once with that exact path', async () => {
+      const revealFile = vi.fn(async () => {});
+      expect(await setup({ service, revealFile }).invoke(CHANNELS.revealFile, indexed)).toEqual({ ok: true });
+      expect(revealFile).toHaveBeenCalledTimes(1);
+      expect(revealFile).toHaveBeenCalledWith(indexed);
+    });
+
+    it('rejects a path not in the index without calling revealFile', async () => {
+      const revealFile = vi.fn(async () => {});
+      const result = await setup({ service, revealFile }).invoke(CHANNELS.revealFile, '/etc/passwd');
+      expect(result).toEqual({ ok: false, error: expect.any(String), code: 'NOT_INDEXED' });
+      expect(revealFile).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-string and empty arguments the same way', async () => {
+      const revealFile = vi.fn(async () => {});
+      const { invoke } = setup({ service, revealFile });
+      for (const bad of [undefined, null, 42, {}, ['/Volumes/Media/a.jpg'], '']) {
+        expect(await invoke(CHANNELS.revealFile, bad)).toEqual({ ok: false, error: expect.any(String), code: 'NOT_INDEXED' });
+      }
+      expect(revealFile).not.toHaveBeenCalled();
+    });
+
+    it('returns FILE_NOT_FOUND from revealFile with a message naming the path', async () => {
+      const revealFile = async (p) => {
+        throw Object.assign(new Error(`File not found: ${p}`), { code: 'FILE_NOT_FOUND' });
+      };
+      const result = await setup({ service, revealFile }).invoke(CHANNELS.revealFile, indexed);
+      expect(result).toEqual({ ok: false, error: `File not found: ${indexed}`, code: 'FILE_NOT_FOUND' });
+    });
+
+    it('returns { ok: false, error } when no revealFile is injected', async () => {
+      const result = await setup({ service }).invoke(CHANNELS.revealFile, indexed);
+      expect(result.ok).toBe(false);
+      expect(typeof result.error).toBe('string');
+    });
+
+    it('is exposed by the preload with the literal channel name', () => {
+      const text = fs.readFileSync(new URL('../../src/main/preload.js', import.meta.url), 'utf8');
+      expect(text).toMatch(/revealFile:\s*\(\w+\)\s*=>\s*ipcRenderer\.invoke\('files:reveal',/);
     });
   });
 });

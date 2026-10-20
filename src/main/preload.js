@@ -10,4 +10,5 @@ contextBridge.exposeInMainWorld('mediaOrganizer', {
   listCollections: () => ipcRenderer.invoke('collections:list'),
   getCollectionView: (collectionId) => ipcRenderer.invoke('collections:getView', collectionId),
   rescanCollection: (collectionId) => ipcRenderer.invoke('collections:rescan', collectionId),
+  revealFile: (filePath) => ipcRenderer.invoke('files:reveal', filePath),
 });

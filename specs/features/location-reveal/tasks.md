@@ -40,7 +40,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-6 (main-process rejection), FR-8 (one channel, mirrored in preload, `{ ok }` through `guard`, replaceable function), FR-9, FR-10, FR-16 (rejection of a path not in the index). Update the header comment in `ipc.js` that lists the channels. A sandboxed preload cannot require local modules, so the channel name is duplicated as a literal there, as for the other five channels. The index check runs before the existence check so an unindexed path never reaches the file system.
 **POS:** task_bf7f836e
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 4: E2E stub of the shell reveal and a channel smoke test
 **What:** Make `tests/support/background-main.js` give the app a `shell` whose `showItemInFolder` records its argument and does nothing else, add helpers to read the recorded calls, and prove the stub and the channel with one e2e that calls `window.mediaOrganizer.revealFile` directly.
