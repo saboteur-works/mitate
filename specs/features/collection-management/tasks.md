@@ -176,7 +176,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-1 and FR-13 (e2e with relaunch). The panel manages the collection that `collection-selected` last announced and clears itself when the announcement has `collectionId: null`. After a successful action the panel dispatches `collections-changed`; `create-collection.js` listens and calls its `refreshCollections`, keeping the selected highlight. Tasks 16, 17, 19, 21 and 23 all edit `collection-manage.js` and `index.html`, and 16, 21 and 22 edit `create-collection.js`; they run one after another in id order. Rename is not offered while the collection is busy (the disabling is Task 23).
 **POS:** task_0a1f6773
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 17: Folder list and Remove folder in the UI
 **What:** Show the selected collection's folders in the panel, each with a Remove button, wired to `collections:removeFolder` with an in-place tree refresh.

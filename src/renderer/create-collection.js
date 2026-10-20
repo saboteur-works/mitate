@@ -111,5 +111,7 @@
     }
   });
 
+  document.addEventListener('collections-changed', refreshCollections);
+
   refreshCollections();
 })();

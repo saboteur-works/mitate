@@ -94,3 +94,16 @@
 .reveal-error[hidden] {
   display: none;
 }
+
+.manage-error {
+  margin: 8px 0 0;
+  color: #b91c1c;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.manage-error[hidden],
+[data-testid="manage-panel"][hidden] {
+  display: none;
+}
