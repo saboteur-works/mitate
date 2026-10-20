@@ -76,7 +76,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-1, FR-3, FR-4, FR-11, FR-12 (busy refusal for rename and remove) and FR-13. `createCollectionService` gains `guard` (default: its own) and `confirm` (default: none) parameters; update the header comment. Tasks 6 to 10 all edit `service.js` and `collection-service.test.js`, so they run one after another. Count writes with the `fs` seam of `openStorage` as `storage.test.js` does.
 **POS:** task_04156a16
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 7: Service delete collection with confirmation
 **What:** Add `deleteCollection(id)` to the collection service: it holds the guard, asks the injected `confirm`, and on confirmation removes the collection in one transaction.

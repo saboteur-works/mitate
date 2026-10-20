@@ -597,3 +597,159 @@ describe('findIndexedFile', () => {
     expect(fs.readFileSync(storageFile, 'utf8')).toBe(storeBefore);
   });
 });
+
+describe('renameCollection and removeFolder', () => {
+  const { createInFlightGuard } = require('../../src/main/collections/in-flight.js');
+
+  function countingFs() {
+    const c = { renames: 0, fail: null };
+    return {
+      c,
+      fs: {
+        renameSync(a, b) {
+          c.renames += 1;
+          return fs.renameSync(a, b);
+        },
+      },
+    };
+  }
+
+  function dirs(...names) {
+    return names.map((n) => {
+      const d = path.join(work, n);
+      fs.mkdirSync(d, { recursive: true });
+      return d;
+    });
+  }
+
+  async function setup(wrap = (s) => s) {
+    const counter = countingFs();
+    const storage = wrap(openStorage({ location: { file: storageFile }, fs: counter.fs }));
+    const guard = createInFlightGuard();
+    const svc = createCollectionService({ storage, scan: stubScan, guard });
+    const [a, b, c] = dirs('a', 'b', 'c');
+    const one = await svc.createCollection('One', [a, b]);
+    const two = await svc.createCollection('Two', [a, c]); // same path a as One
+    const solo = await svc.createCollection('Solo', [c]);
+    counter.c.renames = 0;
+    return { svc, storage, guard, counter: counter.c, one, two, solo, a, b, c };
+  }
+  const raw = () => fs.readFileSync(storageFile, 'utf8');
+
+  it('rename trims, changes only the name, and writes once', async () => {
+    const { svc, storage, counter, one } = await setup();
+    const before = {
+      folders: JSON.stringify(storage.listFolders(one.collection.id)),
+      index: JSON.stringify(storage.getIndex({ collectionId: one.collection.id })),
+      ids: JSON.stringify(storage.getCollection(one.collection.id).folderIds),
+    };
+    const view = await svc.renameCollection(one.collection.id, '  Renamed  ');
+    expect(view.collection.name).toBe('Renamed');
+    expect(storage.getCollection(one.collection.id).name).toBe('Renamed');
+    expect(JSON.stringify(storage.getCollection(one.collection.id).folderIds)).toBe(before.ids);
+    expect(JSON.stringify(storage.listFolders(one.collection.id))).toBe(before.folders);
+    expect(JSON.stringify(storage.getIndex({ collectionId: one.collection.id }))).toBe(before.index);
+    expect(counter.renames).toBe(1);
+  });
+
+  it('rename rejects empty and whitespace names and leaves the store unchanged', async () => {
+    const { svc, counter, one } = await setup();
+    const before = raw();
+    await expect(svc.renameCollection(one.collection.id, '')).rejects.toThrow(/name/);
+    await expect(svc.renameCollection(one.collection.id, '   ')).rejects.toThrow(/name/);
+    expect(raw()).toBe(before);
+    expect(counter.renames).toBe(0);
+  });
+
+  it('rename accepts a duplicate name and a 5000-character name', async () => {
+    const { svc, storage, one, two } = await setup();
+    await svc.renameCollection(one.collection.id, 'Two');
+    expect(storage.getCollection(one.collection.id).name).toBe('Two');
+    expect(storage.getCollection(two.collection.id).name).toBe('Two');
+    const long = 'x'.repeat(5000);
+    await svc.renameCollection(one.collection.id, long);
+    expect(storage.getCollection(one.collection.id).name).toBe(long);
+  });
+
+  it('rename rejects an unknown collection id', async () => {
+    const { svc } = await setup();
+    const before = raw();
+    await expect(svc.renameCollection('nope', 'X')).rejects.toThrow(/Unknown collection/);
+    expect(raw()).toBe(before);
+  });
+
+  it('removeFolder removes record, index and id, returns the view, and spares a same-path folder', async () => {
+    const { svc, storage, counter, one, two, a } = await setup();
+    const target = one.folders.find((f) => f.path === a);
+    const otherBefore = JSON.stringify({
+      c: storage.getCollection(two.collection.id),
+      f: storage.listFolders(two.collection.id),
+      i: storage.getIndex({ collectionId: two.collection.id }),
+    });
+    const view = await svc.removeFolder(one.collection.id, target.id);
+    expect(storage.getFolder(target.id)).toBeUndefined();
+    expect(storage.getIndex({ folderId: target.id })).toEqual([]);
+    expect(storage.getCollection(one.collection.id).folderIds).not.toContain(target.id);
+    expect(view.folders.map((f) => f.id)).toEqual(storage.getCollection(one.collection.id).folderIds);
+    expect(view.files.every((f) => f.folderId !== target.id)).toBe(true);
+    expect(view.files.length).toBe(1);
+    expect(JSON.stringify({
+      c: storage.getCollection(two.collection.id),
+      f: storage.listFolders(two.collection.id),
+      i: storage.getIndex({ collectionId: two.collection.id }),
+    })).toBe(otherBefore);
+    expect(counter.renames).toBe(1);
+  });
+
+  it('removeFolder refuses the only folder with LAST_FOLDER', async () => {
+    const { svc, counter, solo } = await setup();
+    const before = raw();
+    const err = await svc.removeFolder(solo.collection.id, solo.folders[0].id).catch((e) => e);
+    expect(err.code).toBe('LAST_FOLDER');
+    expect(err.message).toMatch(/delete the collection/i);
+    expect(raw()).toBe(before);
+    expect(counter.renames).toBe(0);
+  });
+
+  it('removeFolder rejects a folder of another collection and changes nothing', async () => {
+    const { svc, one, two } = await setup();
+    const before = raw();
+    await expect(svc.removeFolder(one.collection.id, two.folders[0].id)).rejects.toThrow(/does not belong/);
+    await expect(svc.removeFolder(one.collection.id, 'nope')).rejects.toThrow(/does not belong/);
+    await expect(svc.removeFolder('nope', two.folders[0].id)).rejects.toThrow(/Unknown collection/);
+    expect(raw()).toBe(before);
+  });
+
+  it('both operations reject with COLLECTION_BUSY while the guard is held; others succeed', async () => {
+    const { svc, guard, one, two } = await setup();
+    const release = guard.acquire(one.collection.id, 'add-folder');
+    const before = raw();
+    const e1 = await svc.renameCollection(one.collection.id, 'X').catch((e) => e);
+    const e2 = await svc.removeFolder(one.collection.id, one.folders[0].id).catch((e) => e);
+    expect(e1.code).toBe('COLLECTION_BUSY');
+    expect(e2.code).toBe('COLLECTION_BUSY');
+    expect(raw()).toBe(before);
+    expect(guard.holder(one.collection.id)).toBe('add-folder');
+    await expect(svc.renameCollection(two.collection.id, 'Y')).resolves.toBeTruthy();
+    await expect(svc.removeFolder(two.collection.id, two.folders[0].id)).resolves.toBeTruthy();
+    release();
+    await expect(svc.renameCollection(one.collection.id, 'X')).resolves.toBeTruthy();
+    expect(guard.isBusy(one.collection.id)).toBe(false);
+  });
+
+  it('a failure after the first write inside the transaction leaves the store unchanged', async () => {
+    const { svc, guard, one } = await setup((s) => ({
+      ...s,
+      removeFolder() {
+        throw new Error('injected');
+      },
+    }));
+    const before = raw();
+    const storage = openStorage({ location: { file: storageFile } });
+    await expect(svc.removeFolder(one.collection.id, one.folders[0].id)).rejects.toThrow('injected');
+    expect(raw()).toBe(before);
+    expect(storage.getFolder(one.folders[0].id)).toBeDefined();
+    expect(storage.getIndex({ folderId: one.folders[0].id }).length).toBe(1);
+    expect(guard.isBusy(one.collection.id)).toBe(false);
+  });
+});

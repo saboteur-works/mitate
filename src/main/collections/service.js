@@ -1,15 +1,20 @@
 'use strict';
 
 /*
- * Collection service (FR-1, FR-2, FR-3, FR-4, FR-13). Main-process logic with
+ * Collection service (FR-1, FR-2, FR-3, FR-4, FR-11, FR-12, FR-13). Main-process logic with
  * no Electron imports: the storage instance and the scan function are injected
  * so it can be unit-tested and wired by IPC.
  *
- *   createCollectionService({ storage, scan = runScan, idGenerator? })
+ *   createCollectionService({ storage, scan = runScan, idGenerator?, guard?, confirm? })
  *     storage:     an openStorage() instance
  *     scan:        async (absoluteFolderPath) -> FileRecord[]; rejects when the
  *                  folder cannot be read
  *     idGenerator: () -> string (default crypto.randomUUID)
+ *     guard:       an in-flight guard (in-flight.js); default: the service's own.
+ *                  Pass the guard shared with the rescan service so the two
+ *                  exclude each other.
+ *     confirm:     async (request) -> boolean; default none (no confirmation
+ *                  is ever granted). Not used by the operations below yet.
  *
  *   createCollection(name, directories) -> Promise<{collection, folders, files}>
  *   loadCollections()                   -> Promise<Array<{collection, folders, files}>>
@@ -19,6 +24,11 @@
  *                                          (no file records; index not read)
  *   getCollectionView(collectionId)     -> {collection, folders, files} | null
  *                                          (files read per folder, in folder order)
+ *   renameCollection(id, name)          -> Promise<{collection, folders, files}>
+ *                                          (name trimmed; duplicates and any length accepted)
+ *   removeFolder(collectionId, folderId) -> Promise<{collection, folders, files}>
+ *                                          (the refreshed view; rejects with code
+ *                                          'LAST_FOLDER' for the only folder)
  *   findIndexedFile(filePath)           -> stored file record | null
  *                                          (record whose path equals filePath exactly;
  *                                          no normalization, no file system access)
@@ -47,6 +57,13 @@
  *   (concurrently); flags that differ from the stored ones are persisted in
  *   one storage.transaction (one write, FR-18).
  *   Folder records and indexed files are never removed.
+ * - FR-11 / FR-12: renameCollection and removeFolder acquire the guard for
+ *   the collection (kind 'rename' / 'remove-folder') and reject with
+ *   code 'COLLECTION_BUSY' when it is held; other collections are unaffected.
+ *   The guard is released in a finally. Each applies its change in one
+ *   storage.transaction (one write, FR-18). removeFolder refuses a folder that
+ *   belongs to another collection and the collection's last folder (FR-4);
+ *   it never touches the file system.
  * - The file-level `unavailable` flag is DERIVED, not persisted: returned
  *   file records carry unavailable: true when their folder is unavailable, and
  *   the flag is absent when it is available. The folder record is the single
@@ -56,6 +73,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { createInFlightGuard } = require('./in-flight.js');
 const { defaultScan, checkReadableDirectory, isReadableDirectory, scanFolder } = require('./folder-access.js');
 
 async function assertDirectory(dir) {
@@ -108,7 +126,13 @@ function collectionView(storage, collectionId) {
   return { collection, folders, files };
 }
 
-function createCollectionService({ storage, scan = defaultScan, idGenerator = crypto.randomUUID } = {}) {
+function createCollectionService({
+  storage,
+  scan = defaultScan,
+  idGenerator = crypto.randomUUID,
+  guard = createInFlightGuard(),
+  confirm = null,
+} = {}) {
   if (!storage) throw new Error('storage is required');
 
   async function validate(name, directories) {
@@ -196,7 +220,53 @@ function createCollectionService({ storage, scan = defaultScan, idGenerator = cr
     return storage.getIndex().find((record) => record.path === filePath) || null;
   }
 
-  return { createCollection, loadCollections, listCollectionSummaries, getCollectionView, findIndexedFile };
+  // Runs fn while holding the guard for the collection; busy -> COLLECTION_BUSY.
+  async function withGuard(collectionId, kind, fn) {
+    const release = guard.acquire(collectionId, kind);
+    try {
+      return fn();
+    } finally {
+      release();
+    }
+  }
+
+  function requireCollection(collectionId) {
+    const collection = storage.getCollection(collectionId);
+    if (!collection) throw new Error(`Unknown collection: ${String(collectionId)}`);
+    return collection;
+  }
+
+  async function renameCollection(collectionId, name) {
+    return withGuard(collectionId, 'rename', () => {
+      const collection = requireCollection(collectionId);
+      if (typeof name !== 'string' || name.trim() === '') throw new Error('Collection name must not be empty');
+      storage.transaction(() => storage.putCollection({ ...collection, name: name.trim() }));
+      return collectionView(storage, collectionId);
+    });
+  }
+
+  async function removeFolder(collectionId, folderId) {
+    return withGuard(collectionId, 'remove-folder', () => {
+      const collection = requireCollection(collectionId);
+      const folder = storage.getFolder(folderId);
+      if (!folder || folder.collectionId !== collectionId) {
+        throw new Error(`Folder ${String(folderId)} does not belong to this collection`);
+      }
+      if (storage.listFolders(collectionId).length <= 1) {
+        const err = new Error(
+          `Cannot remove the last folder of "${collection.name}"; delete the collection instead`);
+        err.code = 'LAST_FOLDER';
+        throw err;
+      }
+      storage.transaction(() => {
+        storage.replaceFolderIndex(folderId, []);
+        storage.removeFolder(folderId);
+      });
+      return collectionView(storage, collectionId);
+    });
+  }
+
+  return { createCollection, renameCollection, removeFolder, loadCollections, listCollectionSummaries, getCollectionView, findIndexedFile };
 }
 
 module.exports = { createCollectionService, collectionView };
