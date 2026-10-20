@@ -20,7 +20,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-7, FR-8, FR-9, FR-10 (main-side behaviour), FR-13 (existence check reads metadata only) and the not-found part of FR-16 (file-system check replaced by the injected `exists`). Electron's `shell.showItemInFolder` returns void (verified against `electron.d.ts` in this repo), which is why the check is explicit. The macOS-only call lives only here; nothing in FR-1 to FR-5 imports this module.
 **POS:** task_0f0951db
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 2: Look up a stored file record by path
 **What:** Add `findIndexedFile(filePath)` to the collection service, returning the stored file record whose `path` equals `filePath` exactly, or `null`.
