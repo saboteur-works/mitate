@@ -216,7 +216,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-8 (dialog content, cancel writes nothing, confirm keeps both, identical path) and FR-13. The symlink case builds a link inside a temp directory next to the fixture; skip with a stated reason if the platform refuses symlinks. Spec-only task.
 **POS:** task_5ca3e0e0
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 21: Delete collection in the UI
 **What:** Add a "Delete collection" button to the panel that calls `collections:delete`, and make the page clear the tree and selection when the active collection is deleted.
