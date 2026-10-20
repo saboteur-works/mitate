@@ -111,6 +111,18 @@
     }
   });
 
+  // The shown collection was deleted: clear the tree (which announces a cleared file
+  // selection) and announce that no collection is selected. A pending select is
+  // invalidated so it cannot bring the deleted collection back.
+  document.addEventListener('collection-deleted', (event) => {
+    if (event.detail.collectionId !== selectedCollectionId) return;
+    latestSelectToken++;
+    selectedCollectionId = null;
+    highlightSelected();
+    window.TreeView.show([], []);
+    document.dispatchEvent(new CustomEvent('collection-selected', { detail: { collectionId: null } }));
+  });
+
   document.addEventListener('collections-changed', refreshCollections);
 
   refreshCollections();

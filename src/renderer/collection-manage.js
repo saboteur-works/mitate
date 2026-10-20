@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * Management panel for the selected collection (FR-1: rename, FR-3: folder list and
+ * Management panel for the selected collection (FR-2: Delete collection, confirmed in the main process; FR-1: rename, FR-3: folder list and
  * Remove folder, no confirmation; FR-7: Add folder through the folder picker, one collections:addFolder
  * call per picked folder, in pick order, the collection marked busy meanwhile). Removing a folder of the shown collection refreshes the tree
  * in place with TreeView.update (the selection survives only if its node still exists). It manages the
@@ -17,6 +17,7 @@
   const renameInput = document.querySelector('[data-testid="rename-input"]');
   const renameButton = document.querySelector('[data-testid="rename-button"]');
   const addButton = document.querySelector('[data-testid="add-folder-button"]');
+  const deleteButton = document.querySelector('[data-testid="delete-collection-button"]');
   const errorBox = document.querySelector('[data-testid="manage-error"]');
   const folderList = document.querySelector('[data-testid="manage-folders"]');
 
@@ -25,6 +26,7 @@
   let renaming = false;
   let removing = false;
   let adding = false;
+  let deleting = false;
 
   function showError(message) {
     errorBox.textContent = message;
@@ -37,6 +39,7 @@
     renameInput.disabled = !active || renaming;
     renameButton.disabled = !active || renaming;
     addButton.disabled = !active || adding;
+    deleteButton.disabled = !active || deleting;
     for (const button of folderList.querySelectorAll('button')) button.disabled = !active || removing;
   }
 
@@ -169,6 +172,30 @@
     }
   }
 
+  // The confirmation is asked by the main process. A cancel changes nothing; a delete
+  // announces 'collection-deleted' (the page clears the tree and selection if it was the
+  // shown collection) and then 'collections-changed' so the list refreshes.
+  async function deleteCollection() {
+    if (managedId === null || deleting) return;
+    const collectionId = managedId;
+    showError('');
+    deleting = true;
+    sync();
+    try {
+      const result = await api.deleteCollection(collectionId);
+      if (!result.ok) return showError(result.error);
+      if (result.canceled) return;
+      document.dispatchEvent(new CustomEvent('collection-deleted', { detail: { collectionId } }));
+      document.dispatchEvent(new CustomEvent('collections-changed', { detail: { collectionId } }));
+    } catch (err) {
+      showError(err && err.message ? err.message : String(err));
+    } finally {
+      deleting = false;
+      sync();
+    }
+  }
+
+  deleteButton.addEventListener('click', deleteCollection);
   renameButton.addEventListener('click', rename);
   addButton.addEventListener('click', addFolders);
   renameInput.addEventListener('keydown', (event) => {

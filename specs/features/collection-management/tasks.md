@@ -226,7 +226,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-2, FR-4 (shared-path survival in the UI) and FR-13. Clearing uses `TreeView.show([], [])` and a `collection-selected` event with `collectionId: null`; check that `rescan-button.js` and `file-detail.js` already handle null/cleared (they follow `collection-selected` and `file-selected`); fix only what the test shows is missing. Edits `create-collection.js` and `collection-manage.js` after Task 19 (declared dependency for file ordering).
 **POS:** task_c16992ee
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 22: Overlap confirmation at creation in the UI
 **What:** Make `create-collection.js` handle a cancelled creation (keep the form, show nothing created) and cover creation overlap with an e2e.
