@@ -80,7 +80,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-12 (and the clearing rule that FR-5 refers to). The existence test is against the rebuilt tree, not against the disk. The state held in `file-detail.js` follows the event, so it needs no change here.
 **POS:** task_cb210649
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 8: Keyboard navigation of the tree
 **What:** Make the tree a single Tab stop with Up and Down moving a visible focus between visible rows (files and folders), and Enter or Space selecting a focused file or toggling a focused folder.
@@ -90,7 +90,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-2 (the tree half: reach by Tab, move between visible rows, select with Enter or Space) and FR-11 (Enter or Space on a folder toggles it). Focus is held as a node id in `tree-view.js` and resolved against the flattened visible rows, so it survives virtualization and `update`; if the focused id disappears after a refresh, focus falls back to the first row. Use `aria-activedescendant` on the container (`role="tree"`, `tabindex="0"`) rather than moving DOM focus between rows, because rows are created and destroyed on scroll. Each row needs a stable `id` attribute for this. No global shortcut is added (FR-2).
 **POS:** task_362bb9bc
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 9: Detail area below the tree (path display and disabled Reveal button)
 **What:** Add the detail area below the tree with the path display, empty state and a disabled "Reveal in Finder" button, driven by the `file-selected` event.
