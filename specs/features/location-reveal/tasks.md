@@ -120,7 +120,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-1, FR-2 (keyboard-only select and Reveal; no global shortcut, checked by pressing Meta+R and Ctrl+R with a file selected and asserting no call), FR-6, FR-14. The specification of the real reveal is Task 14; no test here may call the real `shell.showItemInFolder`.
 **POS:** task_5cce8424
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 12: E2E error cases: missing file, unavailable file, unindexed path
 **What:** Add e2e tests for a file deleted from disk after indexing, a file in an unavailable folder, and a rejected unindexed path, each with the stubbed reveal.
