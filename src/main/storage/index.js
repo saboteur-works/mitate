@@ -64,10 +64,17 @@
  * writes of the store file.
  *
  * API (returned by openStorage): getLocation, transaction, listCollections, getCollection,
- * putCollection, removeCollection (cascades to folders, index, access),
- * listFolders(collectionId?), getFolder, putFolder, setFolderUnavailable,
- * removeFolder (cascades), getIndex({collectionId?, folderId?}),
+ * putCollection (also the way to rename: put the record with a new name),
+ * removeCollection (cascades to folders, index, access),
+ * listFolders(collectionId?), getFolder,
+ * putFolder (appends the folder id to the owning collection's folderIds when
+ * that collection exists and does not list it yet; a missing collection is not
+ * an error), setFolderUnavailable,
+ * removeFolder (cascades to index and access, and removes the id from the
+ * owning collection's folderIds; an unknown id changes and writes nothing),
+ * getIndex({collectionId?, folderId?}),
  * replaceFolderIndex(folderId, fileRecords), getFolderAccess, setFolderAccess.
+ * The store format (version 1) is unchanged by the folderIds upkeep.
  *
  * Known risk: a JSON store rewritten on each write is not expected to scale to
  * hundreds of thousands of files (unmeasured).
@@ -246,6 +253,11 @@ function openStorage(config) {
         throw new Error('folder path must be an absolute path');
       }
       state.folders[record.id] = copy(Object.assign({ unavailable: false }, record));
+      const owner = state.collections[record.collectionId];
+      if (owner) {
+        if (!Array.isArray(owner.folderIds)) owner.folderIds = [];
+        if (!owner.folderIds.includes(record.id)) owner.folderIds.push(record.id);
+      }
       commit();
     },
     setFolderUnavailable(id, unavailable) {
@@ -253,6 +265,10 @@ function openStorage(config) {
       commit();
     },
     removeFolder(id) {
+      const folder = state.folders[id];
+      if (!folder) return;
+      const owner = state.collections[folder.collectionId];
+      if (owner && Array.isArray(owner.folderIds)) owner.folderIds = owner.folderIds.filter((f) => f !== id);
       dropFolder(id);
       commit();
     },

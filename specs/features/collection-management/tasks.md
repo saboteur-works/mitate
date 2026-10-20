@@ -26,7 +26,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-4, FR-11 (rollback is the existing `transaction` snapshot; this task tests it with the new mutations), FR-13 (storage operations, "another collection untouched", `folderIds` consistent) and FR-6 (two collections, same path, separate records). Some existing storage tests call `putFolder` for a collection created with `folderIds: []`; those now get the id appended, so update only assertions that compare `folderIds` exactly. No rename function is added: rename is `putCollection` with a new `name`. Edits `src/main/storage/index.js` and updates the header comment that lists the API.
 **POS:** task_8e5834b5
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 2: Shared pure path comparison
 **What:** Add `src/shared/path-compare.js`, a DOM-free, Node-free module that normalises an absolute path string and answers "same", "inside" and "contains" by whole segments, case-insensitively.
