@@ -25,6 +25,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** none
 **Estimate:** 3
 **Notes:** Covers FR-4, FR-11 (rollback is the existing `transaction` snapshot; this task tests it with the new mutations), FR-13 (storage operations, "another collection untouched", `folderIds` consistent) and FR-6 (two collections, same path, separate records). Some existing storage tests call `putFolder` for a collection created with `folderIds: []`; those now get the id appended, so update only assertions that compare `folderIds` exactly. No rename function is added: rename is `putCollection` with a new `name`. Edits `src/main/storage/index.js` and updates the header comment that lists the API.
+**POS:** task_8e5834b5
 **Done:** [ ]
 
 ### Task 2: Shared pure path comparison
@@ -34,6 +35,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** none
 **Estimate:** 2
 **Notes:** Covers FR-8 (the pure-string half: whole segments, trailing slash, case) and FR-9 (the same logic is reused by `tree-model.js` in Task 11). Follow the export block of `src/shared/tree-model.js`. POSIX separators only (macOS first); document that in the header. No `path`, `fs` or `realpath` here: symlinks are Task 3 (main process) and Task 10 (derived `resolvedPath`).
+**POS:** task_5d796af2
 **Done:** [ ]
 
 ### Task 3: Overlap detection module
@@ -43,6 +45,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 2
 **Estimate:** 3
 **Notes:** Covers FR-8 (seven listed cases plus identical path, wording, naming the overlapping folder) and FR-13 (overlap unit tests). Pure apart from the injected `realpath` (default `fs.realpathSync`); no confirmation dialog here, only the text. When several existing folders overlap, name the first in the given order and mention the count.
+**POS:** task_7513335f
 **Done:** [ ]
 
 ### Task 4: In-flight guard shared by rescan and management actions
@@ -52,6 +55,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** none
 **Estimate:** 3
 **Notes:** Covers FR-12 (main-process half, rescan side) and FR-13 (in-flight refusals). Replaces the private `inFlight` Set in `rescan.js`; keep `RESCAN_IN_PROGRESS` for rescan versus rescan and update the header comment. Edits `main.js` (also edited by Task 12) and `rescan.js`. The collection service receives the same guard in Tasks 6 to 8; `main.js` passes it to the service in Task 12.
+**POS:** task_8124a388
 **Done:** [ ]
 
 ### Task 5: Main-process confirmer
@@ -61,6 +65,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** none
 **Estimate:** 2
 **Notes:** Covers the confirmation requirements of FR-2 and FR-8 (the dialog seam; wording is built by the callers) and FR-13 (testability without a modal). Mirrors how `ipc.js` passes the window to `showOpenDialog`. Wiring into `main.js` is Task 12; the e2e stub is Task 14.
+**POS:** task_95084259
 **Done:** [ ]
 
 ### Task 6: Service rename and remove folder
@@ -70,6 +75,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 1, 4
 **Estimate:** 3
 **Notes:** Covers FR-1, FR-3, FR-4, FR-11, FR-12 (busy refusal for rename and remove) and FR-13. `createCollectionService` gains `guard` (default: its own) and `confirm` (default: none) parameters; update the header comment. Tasks 6 to 10 all edit `service.js` and `collection-service.test.js`, so they run one after another. Count writes with the `fs` seam of `openStorage` as `storage.test.js` does.
+**POS:** task_04156a16
 **Done:** [ ]
 
 ### Task 7: Service delete collection with confirmation
@@ -79,6 +85,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 1, 4, 6
 **Estimate:** 3
 **Notes:** Covers FR-2, FR-4, FR-11, FR-12 and FR-13. Delete must never call into a collection folder: it only edits the store.
+**POS:** task_c29fa0c5
 **Done:** [ ]
 
 ### Task 8: Service add folder with overlap confirmation
@@ -88,6 +95,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 1, 3, 4, 7
 **Estimate:** 5
 **Notes:** Covers FR-6, FR-7, FR-8, FR-11, FR-12, FR-4 (`folderIds` append) and FR-13. Refactor the existing private `validate` so creation and add share the absolute/readable/storage-file checks (keep creation behaviour and messages). Order: busy check, validation, overlap check, confirm, then acquire-and-scan; confirm happens before any scan, so a cancel costs nothing. Hold the guard from before the confirmation so a rescan cannot start while the dialog is open.
+**POS:** task_fd3b4b30
 **Done:** [ ]
 
 ### Task 9: Overlap confirmation at collection creation
@@ -97,6 +105,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 3, 8
 **Estimate:** 2
 **Notes:** Covers FR-8 (creation case) and FR-6 (same folder in several collections at creation). A folder given twice is de-duplicated by the existing `path.resolve` collapse and is not an overlap prompt at creation; an identical path matters only against a collection's existing folders. The overlap check runs after validation and before any scan.
+**POS:** task_5ad00b33
 **Done:** [ ]
 
 ### Task 10: Collection view orders folders and derives resolvedPath
@@ -106,6 +115,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 9
 **Estimate:** 2
 **Notes:** Covers FR-9 (inputs needed by the build-time rule: the tie-break order and symlink resolution) and FR-6 (v1 stores whose `folderIds` is stale still list every folder). `rescan.js` calls the same `collectionView`, so it gains the fields with no change. `collections:list` summaries are not changed. Sync `realpathSync` on a handful of roots is cheap; record it in the header comment.
+**POS:** task_688dc8e9
 **Done:** [ ]
 
 ### Task 11: Tree build de-duplication
@@ -115,6 +125,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 2, 10
 **Estimate:** 3
 **Notes:** Covers FR-9 and FR-13 (one-appearance rule, identical-path tie-break). Input order of `folderRecords` is the tie-break order (Task 10 supplies it). Load `../shared/path-compare.js` in `index.html` before `tree-model.js`; in `tree-model.js` take `PathCompare` from `require('./path-compare.js')` under Node and from `globalThis.PathCompare` in the renderer. Build per-root sets of normalised file paths so the check is a set lookup, not a scan. The stale-owner choice is recorded in the design decisions above. Edits `index.html` (also edited by Tasks 15, 16, 17, 19, 21).
+**POS:** task_53b3b91e
 **Done:** [ ]
 
 ### Task 12: IPC channels, preload and main wiring for management
@@ -124,6 +135,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 5, 6, 7, 8, 9
 **Estimate:** 3
 **Notes:** Covers FR-1, FR-2, FR-3, FR-7 (interface), FR-8 (creation cancel passes through), FR-11 and FR-12 (errors reach the renderer with codes). Update the header comment listing the channels in `ipc.js`. The channel names are duplicated as literals in `preload.js` (sandboxed preload, as for the existing channels). Edits `main.js` (also edited by Task 4, which must be merged first).
+**POS:** task_31648ad6
 **Done:** [ ]
 
 ### Task 13: A version-1 store written before this feature still opens and works
@@ -133,6 +145,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 6, 7, 8
 **Estimate:** 3
 **Notes:** Covers FR-6 (no format bump, existing v1 store opens unchanged), FR-11 and FR-4. Generate the fixture with a throwaway script (not committed) that runs `createCollection` through the service on the code at the commit before Task 1, over a small temp tree, then replace the temp root with a placeholder that the test rewrites to a fresh temp path before opening. Include two collections that share one folder path as separate records, one folder missing from `folderIds`, and one `unavailable: true` folder. The test must not depend on the fixture's recorded paths existing.
+**POS:** task_fadd843e
 **Done:** [ ]
 
 ### Task 14: E2E confirmation stub and its smoke test
@@ -142,6 +155,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 12
 **Estimate:** 3
 **Notes:** Covers FR-13 (e2e stub seam, no real modal) and the confirmation half of FR-2. The proxy in `background-main.js` must be added next to the existing `ipcMain` and `shell` proxies (extend the `get` trap with `key === 'dialog'`): every key except `showMessageBox` is forwarded to the real `dialog` with `this` bound, so a later `dialog.showOpenDialog = ...` assignment made by `stubFolderPicker` through `app.evaluate` (which sees the real module) is still seen by the app. The stub never calls the real `showMessageBox`, also under `MO_E2E_VISIBLE=1`; document it in the header comment. `stubConfirm(app, answers)` takes an array of booleans consumed in order; `confirmCalls(app)` returns the recorded option objects.
+**POS:** task_b3af2a8f
 **Done:** [ ]
 
 ### Task 15: Renderer in-flight state shared by controls
@@ -151,6 +165,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** none
 **Estimate:** 2
 **Notes:** Covers FR-12 (renderer half, shared state for Task 23). Behaviour of the Rescan button must not change. Load `collection-busy.js` before `rescan-button.js` in `index.html`. Edits `index.html` (also edited by Tasks 11, 16, 17, 19, 21) and `rescan-button.js`.
+**POS:** task_90b180c9
 **Done:** [ ]
 
 ### Task 16: Management panel and rename in the UI
@@ -160,6 +175,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 12, 14
 **Estimate:** 3
 **Notes:** Covers FR-1 and FR-13 (e2e with relaunch). The panel manages the collection that `collection-selected` last announced and clears itself when the announcement has `collectionId: null`. After a successful action the panel dispatches `collections-changed`; `create-collection.js` listens and calls its `refreshCollections`, keeping the selected highlight. Tasks 16, 17, 19, 21 and 23 all edit `collection-manage.js` and `index.html`, and 16, 21 and 22 edit `create-collection.js`; they run one after another in id order. Rename is not offered while the collection is busy (the disabling is Task 23).
+**POS:** task_0a1f6773
 **Done:** [ ]
 
 ### Task 17: Folder list and Remove folder in the UI
@@ -169,6 +185,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 16
 **Estimate:** 3
 **Notes:** Covers FR-3 (UI, in-place refresh, persistence) and FR-13. After removal the renderer calls `TreeView.update(view.folders, view.files)` when the removed-from collection is the selected one, which keeps the selection only if its node id still exists (the existing rule); the selection behaviour is asserted in Task 18. Removal needs no confirmation (the spec asks for one only for delete and overlap). The last-folder refusal message shows in `manage-error` (asserted in Task 18). Uses `summaries[].folders` from `collections:list` for the list; refresh it from `collections-changed`.
+**POS:** task_87039237
 **Done:** [ ]
 
 ### Task 18: E2E remove-folder selection rule and last-folder refusal
@@ -178,6 +195,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 17
 **Estimate:** 2
 **Notes:** Covers FR-3 (selection rule, last-folder refusal) and FR-13. Spec-only task, so it can run beside Task 19.
+**POS:** task_9427a724
 **Done:** [ ]
 
 ### Task 19: Add folder to an existing collection in the UI
@@ -187,6 +205,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 14, 15, 17
 **Estimate:** 3
 **Notes:** Covers FR-7 and FR-13. While an add is in flight the panel marks the collection busy through `CollectionBusy.begin/end` (the disabling UI is Task 23). Restore permissions in `afterEach`; run `chmod` fixtures on a copy of the fixture tree (`lockFolder`/`unlockFolder` in `fixture-tree.js`). A cancelled picker (`canceled: true`) adds nothing; `stubFolderPicker` always answers with paths, so that case is covered by the unit tests of the picker handler already in `ipc.test.js`.
+**POS:** task_19797402
 **Done:** [ ]
 
 ### Task 20: E2E overlap confirmation when adding a folder
@@ -196,6 +215,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 19
 **Estimate:** 3
 **Notes:** Covers FR-8 (dialog content, cancel writes nothing, confirm keeps both, identical path) and FR-13. The symlink case builds a link inside a temp directory next to the fixture; skip with a stated reason if the platform refuses symlinks. Spec-only task.
+**POS:** task_5ca3e0e0
 **Done:** [ ]
 
 ### Task 21: Delete collection in the UI
@@ -205,6 +225,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 14, 19
 **Estimate:** 3
 **Notes:** Covers FR-2, FR-4 (shared-path survival in the UI) and FR-13. Clearing uses `TreeView.show([], [])` and a `collection-selected` event with `collectionId: null`; check that `rescan-button.js` and `file-detail.js` already handle null/cleared (they follow `collection-selected` and `file-selected`); fix only what the test shows is missing. Edits `create-collection.js` and `collection-manage.js` after Task 19 (declared dependency for file ordering).
+**POS:** task_c16992ee
 **Done:** [ ]
 
 ### Task 22: Overlap confirmation at creation in the UI
@@ -214,6 +235,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 12, 14, 21
 **Estimate:** 2
 **Notes:** Covers FR-8 (creation case) and FR-6 (same folder at creation) in the UI. `collections:create` returns `{ ok: true, canceled: true }` on cancel; the current code would treat it as success and clear the form, so branch on `canceled` first. Edits `create-collection.js` after Task 21 (declared dependency for file ordering).
+**POS:** task_982bde68
 **Done:** [ ]
 
 ### Task 23: Disable management controls while a scan runs
@@ -223,6 +245,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 15, 21
 **Estimate:** 3
 **Notes:** Covers FR-12 and FR-13 (in-flight refusals end to end). The disabled state follows `collection-busy-changed` and `collection-selected`; busy is begun by the rescan button (Task 15) and by the panel's add-folder (Task 19). The main-process refusal is the authority; the disabled controls are the renderer half.
+**POS:** task_06d4ebbd
 **Done:** [ ]
 
 ### Task 24: E2E switching the active collection
@@ -232,6 +255,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** none
 **Estimate:** 2
 **Notes:** Covers FR-5 and FR-13. The switching code already exists in `create-collection.js` (`selectCollection`); this task is the test, and fixes a defect only if the test shows one. Spec-only task. Create the collections through `createCollectionService` against `openStorage` before launch, as `rescan.spec.js` does.
+**POS:** task_b8c255eb
 **Done:** [ ]
 
 ### Task 25: E2E the same folder in several collections
@@ -241,6 +265,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 17, 19, 21
 **Estimate:** 3
 **Notes:** Covers FR-6, FR-4 (other collection untouched, end to end) and FR-13. Use a copy of the fixture tree so the disk change does not leak into other specs.
+**POS:** task_146d9736
 **Done:** [ ]
 
 ### Task 26: E2E one appearance of a file across overlapping roots
@@ -250,6 +275,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 11, 17, 19
 **Estimate:** 3
 **Notes:** Covers FR-9 and FR-13 (e2e). Expanding the roots uses the existing tree interactions in `tree-view.spec.js`. Spec-only task.
+**POS:** task_0867bb8a
 **Done:** [ ]
 
 ### Task 27: Read-only check around every management flow
@@ -259,6 +285,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 18, 20, 21, 22
 **Estimate:** 3
 **Notes:** Covers FR-10 and US-3. Follow `tests/e2e/reveal-readonly.spec.js` for the snapshot pattern: both snapshots are taken with the app closed to keep the ordering rule of `tools/readonly-check`. The store lives in the user data dir, outside the fixture tree.
+**POS:** task_086ec0b3
 **Done:** [ ]
 
 ## Summary
