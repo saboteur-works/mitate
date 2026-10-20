@@ -7,6 +7,7 @@ const { startStorage } = require('./startup.js');
 const { createCollectionService } = require('./collections/service.js');
 const { createRescanService } = require('./collections/rescan.js');
 const { createInFlightGuard } = require('./collections/in-flight.js');
+const { createConfirmer } = require('./confirm.js');
 const { createRevealer } = require('./reveal.js');
 const { registerIpc } = require('./ipc.js');
 
@@ -46,8 +47,11 @@ app.whenReady().then(async () => {
     return;
   }
   const storage = started.storage;
-  const service = createCollectionService({ storage });
+  // One guard for every per-collection action, so a rescan and a rename,
+  // delete, add or remove on the same collection refuse each other.
   const guard = createInFlightGuard();
+  const confirm = createConfirmer({ dialog, getWindow: () => mainWindow });
+  const service = createCollectionService({ storage, guard, confirm });
   const rescanService = createRescanService({ storage, guard });
   const { revealFile } = createRevealer({ shell });
   registerIpc({ ipcMain, dialog, service, rescanService, revealFile, getWindow: () => mainWindow });

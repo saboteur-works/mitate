@@ -150,3 +150,133 @@ describe('registerIpc', () => {
     });
   });
 });
+
+describe('collection management channels', () => {
+  const view = { collection: { id: 'c1', name: 'New' }, folders: [{ id: 'f1' }, { id: 'f2' }], files: [] };
+  const mk = (over = {}) => {
+    const service = {
+      renameCollection: vi.fn(async () => view),
+      deleteCollection: vi.fn(async () => ({ deleted: true })),
+      addFolder: vi.fn(async () => view),
+      removeFolder: vi.fn(async () => view),
+      createCollection: vi.fn(async () => ({ canceled: true })),
+      ...over,
+    };
+    return { service, ...setup({ service }) };
+  };
+
+  it('names and registers the four channels', () => {
+    expect(CHANNELS.renameCollection).toBe('collections:rename');
+    expect(CHANNELS.deleteCollection).toBe('collections:delete');
+    expect(CHANNELS.addFolder).toBe('collections:addFolder');
+    expect(CHANNELS.removeFolder).toBe('collections:removeFolder');
+  });
+
+  it('rename returns the summary; add and remove return the view; delete returns deleted', async () => {
+    const { service, invoke } = mk();
+    expect(await invoke(CHANNELS.renameCollection, 'c1', 'New')).toEqual({ ok: true, summary: { id: 'c1', name: 'New', folderCount: 2 } });
+    expect(await invoke(CHANNELS.addFolder, 'c1', '/d')).toEqual({ ok: true, view });
+    expect(await invoke(CHANNELS.removeFolder, 'c1', 'f1')).toEqual({ ok: true, view });
+    expect(await invoke(CHANNELS.deleteCollection, 'c1')).toEqual({ ok: true, deleted: true });
+    expect(service.renameCollection).toHaveBeenCalledOnce();
+    expect(service.renameCollection).toHaveBeenCalledWith('c1', 'New');
+    expect(service.addFolder).toHaveBeenCalledWith('c1', '/d');
+    expect(service.removeFolder).toHaveBeenCalledWith('c1', 'f1');
+    expect(service.deleteCollection).toHaveBeenCalledWith('c1');
+  });
+
+  it('passes a service cancel through for delete, add folder and create', async () => {
+    const canceled = async () => ({ canceled: true });
+    const { invoke } = mk({ deleteCollection: canceled, addFolder: canceled });
+    expect(await invoke(CHANNELS.deleteCollection, 'c1')).toEqual({ ok: true, canceled: true });
+    expect(await invoke(CHANNELS.addFolder, 'c1', '/d')).toEqual({ ok: true, canceled: true });
+    expect(await invoke(CHANNELS.createCollection, 'n', ['/d'])).toEqual({ ok: true, canceled: true });
+  });
+
+  it('returns error and code for COLLECTION_BUSY and LAST_FOLDER', async () => {
+    const fail = (code) => async () => Object.assign(new Error(`failed ${code}`), { code });
+    const reject = (code) => async () => { throw await fail(code)(); };
+    const { invoke } = mk({ renameCollection: reject('COLLECTION_BUSY'), removeFolder: reject('LAST_FOLDER') });
+    expect(await invoke(CHANNELS.renameCollection, 'c1', 'x')).toEqual({ ok: false, error: 'failed COLLECTION_BUSY', code: 'COLLECTION_BUSY' });
+    expect(await invoke(CHANNELS.removeFolder, 'c1', 'f1')).toEqual({ ok: false, error: 'failed LAST_FOLDER', code: 'LAST_FOLDER' });
+  });
+
+  it('rejects non-string ids and paths before calling the service', async () => {
+    const { service, invoke } = mk();
+    for (const result of [
+      await invoke(CHANNELS.renameCollection, 5, 'x'),
+      await invoke(CHANNELS.renameCollection, 'c1', null),
+      await invoke(CHANNELS.deleteCollection, undefined),
+      await invoke(CHANNELS.addFolder, 'c1', 7),
+      await invoke(CHANNELS.addFolder, {}, '/d'),
+      await invoke(CHANNELS.removeFolder, 'c1', 3),
+    ]) {
+      expect(result.ok).toBe(false);
+      expect(typeof result.error).toBe('string');
+    }
+    for (const fn of ['renameCollection', 'deleteCollection', 'addFolder', 'removeFolder']) expect(service[fn]).not.toHaveBeenCalled();
+  });
+
+  it('exposes the four methods in the preload with literal channel names', () => {
+    const text = fs.readFileSync(new URL('../../src/main/preload.js', import.meta.url), 'utf8');
+    expect(text).toMatch(/renameCollection:[^\n]*ipcRenderer\.invoke\('collections:rename',/);
+    expect(text).toMatch(/deleteCollection:[^\n]*ipcRenderer\.invoke\('collections:delete',/);
+    expect(text).toMatch(/addFolder:[^\n]*ipcRenderer\.invoke\('collections:addFolder',/);
+    expect(text).toMatch(/removeFolder:[^\n]*ipcRenderer\.invoke\('collections:removeFolder',/);
+  });
+});
+
+describe('main.js wiring', () => {
+  const text = fs.readFileSync(new URL('../../src/main/main.js', import.meta.url), 'utf8');
+
+  it('builds the confirmer and passes confirm and the shared guard to the collection service', () => {
+    expect(text).toMatch(/createConfirmer\(\{[^}]*dialog[^}]*getWindow/);
+    expect(text).toMatch(/createCollectionService\(\{[^}]*\bguard\b[^}]*\bconfirm\b[^}]*\}\)/);
+  });
+
+  it('creates the guard once, before the services, and passes the same one to the rescan service', () => {
+    expect(text.match(/createInFlightGuard\(\)/g)).toHaveLength(1);
+    expect(text).toMatch(/createRescanService\(\{[^}]*\bguard\b[^}]*\}\)/);
+    expect(text.indexOf('createInFlightGuard()')).toBeLessThan(text.indexOf('createCollectionService({'));
+  });
+
+  it('a rescan in flight makes rename answer COLLECTION_BUSY through services wired as main.js wires them', async () => {
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const { openStorage } = require('../../src/main/storage/index.js');
+    const { createCollectionService } = require('../../src/main/collections/service.js');
+    const { createRescanService } = require('../../src/main/collections/rescan.js');
+    const { createInFlightGuard } = require('../../src/main/collections/in-flight.js');
+    const { createConfirmer } = require('../../src/main/confirm.js');
+    const work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'mo-wire-')));
+    try {
+      const dir = path.join(work, 'dir');
+      fs.mkdirSync(dir);
+      const storage = openStorage({ location: { file: path.join(work, 'store.json') } });
+      let release;
+      const gate = new Promise((r) => { release = r; });
+      let gated = false;
+      const scan = async () => { if (gated) await gate; return []; };
+      const guard = createInFlightGuard();
+      const confirm = createConfirmer({ dialog: { showMessageBox: async () => ({ response: 1 }) }, getWindow: () => null });
+      const service = createCollectionService({ storage, guard, confirm, scan });
+      const rescanService = createRescanService({ storage, guard, scan });
+      const handlers = new Map();
+      registerIpc({ ipcMain: { handle: (c, f) => handlers.set(c, f) }, dialog: {}, service, rescanService });
+      const invoke = (c, ...a) => handlers.get(c)({}, ...a);
+
+      const created = await invoke(CHANNELS.createCollection, 'c', [dir]);
+      expect(created.ok).toBe(true);
+      const id = created.summary.id;
+      gated = true;
+      const rescan = invoke(CHANNELS.rescanCollection, id);
+      const renamed = await invoke(CHANNELS.renameCollection, id, 'other');
+      expect(renamed).toMatchObject({ ok: false, code: 'COLLECTION_BUSY' });
+      release();
+      expect((await rescan).ok).toBe(true);
+      expect((await invoke(CHANNELS.renameCollection, id, 'other')).ok).toBe(true);
+    } finally {
+      fs.rmSync(work, { recursive: true, force: true });
+    }
+  });
+});

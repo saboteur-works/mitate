@@ -8,6 +8,17 @@
  *                          only (openDirectory + multiSelections, never openFile)
  *   collections:create  (name, directories) -> { ok: true, summary: { id, name, folderCount } }
  *                          | { ok: false, error }; the tree is loaded by collections:getView
+ *                          or { ok: true, canceled: true } when the user declines the
+ *                          overlap confirmation (nothing is stored).
+ *   collections:rename  (collectionId, name) -> { ok: true, summary: { id, name, folderCount } }
+ *   collections:delete  (collectionId) -> { ok: true, deleted: true } | { ok: true, canceled: true }
+ *                          the service asks for confirmation (native dialog); no files on disk are touched.
+ *   collections:addFolder (collectionId, dirPath) -> { ok: true, view } | { ok: true, canceled: true }
+ *                          dirPath comes from folders:pick; the service asks for overlap confirmation.
+ *   collections:removeFolder (collectionId, folderId) -> { ok: true, view }
+ *                          rename, delete, add and remove fail with code 'COLLECTION_BUSY' while the
+ *                          collection has another action in flight (shared guard), remove also with
+ *                          'LAST_FOLDER' for the only folder.
  *   collections:list    -> { ok: true, summaries } | { ok: false, error }
  *                          summaries = [{ id, name, folderCount,
  *                          folders: [{ id, path, unavailable }] }]; no file records
@@ -41,6 +52,10 @@ const CHANNELS = {
   listCollections: 'collections:list',
   getCollectionView: 'collections:getView',
   rescanCollection: 'collections:rescan',
+  renameCollection: 'collections:rename',
+  deleteCollection: 'collections:delete',
+  addFolder: 'collections:addFolder',
+  removeFolder: 'collections:removeFolder',
   revealFile: 'files:reveal',
 };
 
@@ -69,7 +84,9 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, revealFil
 
   handle(CHANNELS.createCollection, (_event, name, directories) =>
     guard(async () => {
-      const { collection, folders } = await service.createCollection(name, directories);
+      const created = await service.createCollection(name, directories);
+      if (created.canceled) return { canceled: true };
+      const { collection, folders } = created;
       return { summary: { id: collection.id, name: collection.name, folderCount: folders.length } };
     }));
 
@@ -88,6 +105,37 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, revealFil
       if (!rescanService) throw new Error('Rescan is not available');
       const { summary, ...view } = await rescanService.rescanCollection(collectionId);
       return { view, summary };
+    }));
+
+  const requireStrings = (...values) => {
+    if (!values.every((v) => typeof v === 'string')) throw new Error('Invalid arguments');
+  };
+  const summaryOf = ({ collection, folders }) => ({ id: collection.id, name: collection.name, folderCount: folders.length });
+
+  handle(CHANNELS.renameCollection, (_event, collectionId, name) =>
+    guard(async () => {
+      requireStrings(collectionId, name);
+      return { summary: summaryOf(await service.renameCollection(collectionId, name)) };
+    }));
+
+  handle(CHANNELS.deleteCollection, (_event, collectionId) =>
+    guard(async () => {
+      requireStrings(collectionId);
+      const result = await service.deleteCollection(collectionId);
+      return result && result.canceled ? { canceled: true } : { deleted: true };
+    }));
+
+  handle(CHANNELS.addFolder, (_event, collectionId, dirPath) =>
+    guard(async () => {
+      requireStrings(collectionId, dirPath);
+      const view = await service.addFolder(collectionId, dirPath);
+      return view && view.canceled ? { canceled: true } : { view };
+    }));
+
+  handle(CHANNELS.removeFolder, (_event, collectionId, folderId) =>
+    guard(async () => {
+      requireStrings(collectionId, folderId);
+      return { view: await service.removeFolder(collectionId, folderId) };
     }));
 
   // The index check runs first so an unindexed path never reaches the file system.

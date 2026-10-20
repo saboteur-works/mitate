@@ -136,7 +136,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-1, FR-2, FR-3, FR-7 (interface), FR-8 (creation cancel passes through), FR-11 and FR-12 (errors reach the renderer with codes). Update the header comment listing the channels in `ipc.js`. The channel names are duplicated as literals in `preload.js` (sandboxed preload, as for the existing channels). Edits `main.js` (also edited by Task 4, which must be merged first).
 **POS:** task_31648ad6
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 13: A version-1 store written before this feature still opens and works
 **What:** Add a v1 store fixture produced by the shipped code and tests proving it opens unchanged and its collections still work with every new operation.
