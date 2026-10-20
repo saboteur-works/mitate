@@ -276,7 +276,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-9 and FR-13 (e2e). Expanding the roots uses the existing tree interactions in `tree-view.spec.js`. Spec-only task.
 **POS:** task_0867bb8a
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 27: Read-only check around every management flow
 **What:** Add an e2e that snapshots a fixture tree with `tools/readonly-check` before and after rename, delete, add, remove, switch and a cancelled add, and asserts no differences.
