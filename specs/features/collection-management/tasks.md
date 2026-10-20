@@ -186,7 +186,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-3 (UI, in-place refresh, persistence) and FR-13. After removal the renderer calls `TreeView.update(view.folders, view.files)` when the removed-from collection is the selected one, which keeps the selection only if its node id still exists (the existing rule); the selection behaviour is asserted in Task 18. Removal needs no confirmation (the spec asks for one only for delete and overlap). The last-folder refusal message shows in `manage-error` (asserted in Task 18). Uses `summaries[].folders` from `collections:list` for the list; refresh it from `collections-changed`.
 **POS:** task_87039237
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 18: E2E remove-folder selection rule and last-folder refusal
 **What:** Add e2e tests for how a file selection survives a folder removal and for refusing to remove the last folder.

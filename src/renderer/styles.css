@@ -107,3 +107,8 @@
 [data-testid="manage-panel"][hidden] {
   display: none;
 }
+
+.manage-unavailable {
+  color: #b45309;
+  font-size: 12px;
+}
