@@ -2,13 +2,15 @@
 
 A read-only desktop lens over folders you already have. You group folders into named collections, and the app indexes every supported media file inside them, however deeply nested, and shows the folder tree. It never moves, renames, edits or deletes a file. See [docs/concept.md](docs/concept.md) for the full concept.
 
-Current state: Feature 1, "index a folder collection and browse its tree" ([spec](specs/features/collection-index-tree.md)). It is an Electron app (Electron 44, macOS first) with:
+Current state: Feature 1, "index a folder collection and browse its tree" ([spec](specs/features/collection-index-tree.md)), and Feature 2, "File location and Reveal in Finder" ([spec](specs/features/location-reveal.md)). It is an Electron app (Electron 44, macOS first) with:
 
 - create a collection from folders chosen in a directory-only picker
 - folder discovery of supported media files, run in a worker thread
 - a virtualized folder tree view
 - per-collection rescan
 - collections and their index persisted as JSON in the app's own user-data directory
+- select a file in the tree by click or keyboard; its full absolute path is shown below the tree
+- a "Reveal in Finder" button for the selected file, with error messages for a missing file and for a file that cannot be checked (see [Reveal in Finder](#reveal-in-finder)); the hands-on check of the real reveal has not been run yet
 
 ## Install
 
@@ -70,9 +72,19 @@ The tests launch the app through `tests/support/background-main.js` (the path is
 | `tools/scan-speed/` | Scripts that measure scan wall time and peak RSS (see below) |
 | `tools/format-probe/` | Format-support probes behind [docs/research/format-support.md](docs/research/format-support.md) |
 | `tests/unit/`, `tests/e2e/` | Vitest and Playwright tests |
-| `tests/support/` | Test helpers, including the fixture-tree builder (`fixture-tree.js`), the background Electron entry (`background-main.js`, `app-entry.js`), the IPC handler wrapper used by e2e tests (`ipc-wrap.js`) and `counting-fs.js` |
+| `tests/support/` | Test helpers, including the fixture-tree builder (`fixture-tree.js`), the background Electron entry (`background-main.js`, `app-entry.js`), the e2e app launcher and helpers (`e2e-app.js`), the IPC handler wrapper used by e2e tests (`ipc-wrap.js`) and `counting-fs.js` |
 | `docs/` | Concept, research and measurement records |
 | `specs/` | Product and feature specs |
+
+## Reveal in Finder
+
+Select a file in the tree (click, or keyboard: the tree is one Tab stop, Up/Down move focus, Enter or Space selects a file or toggles a folder). One file is selected at a time. The detail area below the tree shows the file's full absolute path, wrapped and selectable, or an empty state when nothing is selected. The "Reveal in Finder" button is disabled until a file is selected.
+
+The action only reveals; it does not modify files. It reveals only a path that is in the index (otherwise the error code is `NOT_INDEXED`). Before revealing, it checks that the file exists with `lstat`; no file contents are read. A missing file shows "File not found: <path>" (`FILE_NOT_FOUND`); a check refused with `EACCES` or `EPERM` shows "Can't check this file: permission denied (<code>): <path>" (`FILE_UNCHECKABLE`). An error clears when the selection changes or the tree refreshes. An e2e read-only check around selecting and revealing (`tests/e2e/reveal-readonly.spec.js`) reported no differences, including 0 access-time differences in that run.
+
+The e2e tests do not call the real reveal. `tests/support/background-main.js` gives the app a `shell` whose `showItemInFolder` records the path into `globalThis.__moReveals` and never calls the real one, also when `MO_E2E_VISIBLE=1`. Tests read the recorded calls with `revealCalls(app)` and clear them with `resetRevealCalls(app)`, both from `tests/support/e2e-app.js`. The real channel checks still run.
+
+The hands-on check of the real reveal on macOS has not been run yet. Its result will be recorded in [docs/measurements/reveal-in-finder.md](docs/measurements/reveal-in-finder.md), which currently holds the procedure and no results.
 
 ## Read-only check
 

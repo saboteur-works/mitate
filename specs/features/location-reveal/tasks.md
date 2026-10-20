@@ -160,7 +160,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 1
 **Notes:** Covers FR-7, FR-14 (documentation of the test seam) only as far as tests need; fuller documentation is handled later by the scribe. Do not state the hands-on outcome in the README until Task 14 is done; link to the file instead.
 **POS:** task_9ca43748
-**Done:** [ ]
+**Done:** [x]
 
 ## Summary
 - Total tasks: 15
