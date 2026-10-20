@@ -753,3 +753,174 @@ describe('renameCollection and removeFolder', () => {
     expect(guard.isBusy(one.collection.id)).toBe(false);
   });
 });
+
+describe('deleteCollection', () => {
+  const { createInFlightGuard } = require('../../src/main/collections/in-flight.js');
+  const { createRescanService } = require('../../src/main/collections/rescan.js');
+
+  function dirs(...names) {
+    return names.map((n) => {
+      const d = path.join(work, n);
+      fs.mkdirSync(d, { recursive: true });
+      fs.writeFileSync(path.join(d, 'keep.txt'), 'x');
+      return d;
+    });
+  }
+  const raw = () => fs.readFileSync(storageFile, 'utf8');
+  const listing = (d) => fs.readdirSync(d, { recursive: true }).sort();
+
+  async function setup({ confirm, wrap = (s) => s, scan = stubScan } = {}) {
+    const calls = { writes: 0, confirms: [], atConfirm: [] };
+    const storage = wrap(openStorage({
+      location: { file: storageFile },
+      fs: { renameSync(a, b) { calls.writes += 1; return fs.renameSync(a, b); } },
+    }));
+    const guard = createInFlightGuard();
+    const wrapped = confirm === undefined ? undefined : async (req) => {
+      calls.confirms.push(req);
+      calls.atConfirm.push(calls.writes);
+      return confirm(req);
+    };
+    const svc = createCollectionService({ storage, scan, guard, confirm: wrapped });
+    const [a, b, c] = dirs('a', 'b', 'c');
+    const one = await svc.createCollection('One', [a, b]);
+    const two = await svc.createCollection('Two', [a, b]); // same folder paths
+    const other = await svc.createCollection('Other', [c]);
+    calls.writes = 0;
+    return { svc, storage, guard, calls, one, two, other, a, b, c };
+  }
+
+  it('asks before any write with the name, a no-files-touched statement and the label', async () => {
+    const { svc, calls, one } = await setup({ confirm: () => true });
+    await svc.deleteCollection(one.collection.id);
+    expect(calls.confirms.length).toBe(1);
+    expect(calls.atConfirm[0]).toBe(0);
+    const req = calls.confirms[0];
+    expect(`${req.message} ${req.detail}`).toContain('One');
+    expect(`${req.message} ${req.detail}`).toMatch(/No files on disk are touched/);
+    expect(req.confirmLabel).toBe('Delete collection');
+  });
+
+  it('confirm true removes collection, folders, indexes and access; a same-path collection is byte-identical', async () => {
+    const { svc, storage, calls, one, two } = await setup({ confirm: () => true });
+    for (const f of one.folders) storage.setFolderAccess(f.id, { token: 't' });
+    const twoBefore = JSON.stringify({
+      c: storage.getCollection(two.collection.id),
+      f: storage.listFolders(two.collection.id),
+      i: storage.getIndex({ collectionId: two.collection.id }),
+      a: two.folders.map((f) => storage.getFolderAccess(f.id)),
+    });
+    calls.writes = 0;
+    await expect(svc.deleteCollection(one.collection.id)).resolves.toEqual({ deleted: true });
+    const fresh = openStorage({ location: { file: storageFile } });
+    expect(fresh.getCollection(one.collection.id)).toBeUndefined();
+    for (const f of one.folders) {
+      expect(fresh.getFolder(f.id)).toBeUndefined();
+      expect(fresh.getIndex({ folderId: f.id })).toEqual([]);
+      expect(fresh.getFolderAccess(f.id)).toBeUndefined();
+    }
+    expect(JSON.stringify({
+      c: fresh.getCollection(two.collection.id),
+      f: fresh.listFolders(two.collection.id),
+      i: fresh.getIndex({ collectionId: two.collection.id }),
+      a: two.folders.map((f) => fresh.getFolderAccess(f.id)),
+    })).toBe(twoBefore);
+    expect(calls.writes).toBe(1);
+  });
+
+  it('confirm false resolves canceled and the store is unchanged and not written', async () => {
+    const { svc, calls, one } = await setup({ confirm: () => false });
+    const before = raw();
+    await expect(svc.deleteCollection(one.collection.id)).resolves.toEqual({ canceled: true });
+    expect(raw()).toBe(before);
+    expect(calls.writes).toBe(0);
+  });
+
+  it('without an injected confirm the result is canceled and nothing is written', async () => {
+    const { svc, calls, one } = await setup();
+    const before = raw();
+    await expect(svc.deleteCollection(one.collection.id)).resolves.toEqual({ canceled: true });
+    expect(raw()).toBe(before);
+    expect(calls.writes).toBe(0);
+  });
+
+  it('an unknown id rejects without asking', async () => {
+    const { svc, calls } = await setup({ confirm: () => true });
+    const before = raw();
+    await expect(svc.deleteCollection('nope')).rejects.toThrow(/Unknown collection/);
+    expect(calls.confirms.length).toBe(0);
+    expect(raw()).toBe(before);
+  });
+
+  it('holds the guard while confirm is pending and releases it afterwards', async () => {
+    let answer;
+    const pending = new Promise((r) => { answer = r; });
+    const { svc, guard, calls, one, two, other } = await setup({ confirm: () => pending });
+    const del = svc.deleteCollection(one.collection.id);
+    await Promise.resolve();
+    expect(calls.confirms.length).toBe(1);
+    expect(guard.holder(one.collection.id)).toBe('delete');
+    const rescan = createRescanService({ storage: openStorage({ location: { file: storageFile } }), scan: stubScan, guard });
+    const errs = await Promise.all([
+      svc.renameCollection(one.collection.id, 'X').catch((e) => e),
+      svc.removeFolder(one.collection.id, one.folders[0].id).catch((e) => e),
+      rescan.rescanCollection(one.collection.id).catch((e) => e),
+    ]);
+    for (const e of errs) expect(e.code).toBe('COLLECTION_BUSY');
+    await expect(svc.renameCollection(other.collection.id, 'Y')).resolves.toBeTruthy();
+    await expect(svc.renameCollection(two.collection.id, 'Z')).resolves.toBeTruthy();
+    answer(true);
+    await expect(del).resolves.toEqual({ deleted: true });
+    expect(guard.isBusy(one.collection.id)).toBe(false);
+  });
+
+  it('releases the guard after cancel and after a throwing confirm', async () => {
+    const canceled = await setup({ confirm: () => false });
+    await canceled.svc.deleteCollection(canceled.one.collection.id);
+    expect(canceled.guard.isBusy(canceled.one.collection.id)).toBe(false);
+
+    fs.rmSync(work, { recursive: true, force: true });
+    fs.mkdirSync(work, { recursive: true });
+    const throwing = await setup({ confirm: () => { throw new Error('dialog failed'); } });
+    const before = raw();
+    await expect(throwing.svc.deleteCollection(throwing.one.collection.id)).rejects.toThrow('dialog failed');
+    expect(throwing.guard.isBusy(throwing.one.collection.id)).toBe(false);
+    expect(raw()).toBe(before);
+  });
+
+  it('rejects with COLLECTION_BUSY before asking when the guard is already held', async () => {
+    const { svc, guard, calls, one } = await setup({ confirm: () => true });
+    const release = guard.acquire(one.collection.id, 'rescan');
+    const before = raw();
+    const err = await svc.deleteCollection(one.collection.id).catch((e) => e);
+    expect(err.code).toBe('COLLECTION_BUSY');
+    expect(calls.confirms.length).toBe(0);
+    expect(raw()).toBe(before);
+    expect(guard.holder(one.collection.id)).toBe('rescan');
+    release();
+  });
+
+  it('a throwing storage.removeCollection leaves the store unchanged and releases the guard', async () => {
+    const { svc, guard, one } = await setup({
+      confirm: () => true,
+      wrap: (s) => ({ ...s, removeCollection() { throw new Error('injected'); } }),
+    });
+    const before = raw();
+    await expect(svc.deleteCollection(one.collection.id)).rejects.toThrow('injected');
+    expect(raw()).toBe(before);
+    expect(guard.isBusy(one.collection.id)).toBe(false);
+  });
+
+  it('touches no file system path: scan is never called and the folders are unchanged', async () => {
+    const { a, b, one } = await setup({ confirm: () => true });
+    // A second service over the same store whose scan fails if called.
+    const strict = createCollectionService({
+      storage: openStorage({ location: { file: storageFile } }),
+      scan: throwingScan,
+      confirm: async () => true,
+    });
+    const before = [listing(a), listing(b)];
+    await expect(strict.deleteCollection(one.collection.id)).resolves.toEqual({ deleted: true });
+    expect([listing(a), listing(b)]).toEqual(before);
+  });
+});

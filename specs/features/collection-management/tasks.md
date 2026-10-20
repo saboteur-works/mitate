@@ -86,7 +86,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-2, FR-4, FR-11, FR-12 and FR-13. Delete must never call into a collection folder: it only edits the store.
 **POS:** task_c29fa0c5
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 8: Service add folder with overlap confirmation
 **What:** Add `addFolder(collectionId, dirPath)` to the collection service: validate, check overlap, confirm if needed, scan only the new folder, and store it in one transaction.

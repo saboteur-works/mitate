@@ -14,7 +14,7 @@
  *                  Pass the guard shared with the rescan service so the two
  *                  exclude each other.
  *     confirm:     async (request) -> boolean; default none (no confirmation
- *                  is ever granted). Not used by the operations below yet.
+ *                  is ever granted); used by deleteCollection.
  *
  *   createCollection(name, directories) -> Promise<{collection, folders, files}>
  *   loadCollections()                   -> Promise<Array<{collection, folders, files}>>
@@ -29,6 +29,9 @@
  *   removeFolder(collectionId, folderId) -> Promise<{collection, folders, files}>
  *                                          (the refreshed view; rejects with code
  *                                          'LAST_FOLDER' for the only folder)
+ *   deleteCollection(id)                -> Promise<{deleted: true} | {canceled: true}>
+ *                                          (guard kind 'delete', held across the confirmation;
+ *                                          store only, never touches the file system)
  *   findIndexedFile(filePath)           -> stored file record | null
  *                                          (record whose path equals filePath exactly;
  *                                          no normalization, no file system access)
@@ -224,7 +227,7 @@ function createCollectionService({
   async function withGuard(collectionId, kind, fn) {
     const release = guard.acquire(collectionId, kind);
     try {
-      return fn();
+      return await fn();
     } finally {
       release();
     }
@@ -266,7 +269,26 @@ function createCollectionService({
     });
   }
 
-  return { createCollection, renameCollection, removeFolder, loadCollections, listCollectionSummaries, getCollectionView, findIndexedFile };
+  // FR-2 / FR-4: removes the collection, its folders, indexes and access data
+  // from the store only. The guard is held from before the confirmation so a
+  // rescan or edit cannot interleave while the dialog is open.
+  async function deleteCollection(collectionId) {
+    return withGuard(collectionId, 'delete', async () => {
+      const collection = requireCollection(collectionId);
+      const confirmed = typeof confirm === 'function' && (await confirm({
+        title: 'Delete collection',
+        message: `Delete the collection "${collection.name}"?`,
+        detail: 'Only the collection and its index are removed from Mitate. '
+          + 'No files on disk are touched, deleted or moved.',
+        confirmLabel: 'Delete collection',
+      }));
+      if (confirmed !== true) return { canceled: true };
+      storage.transaction(() => storage.removeCollection(collectionId));
+      return { deleted: true };
+    });
+  }
+
+  return { createCollection, renameCollection, removeFolder, deleteCollection, loadCollections, listCollectionSummaries, getCollectionView, findIndexedFile };
 }
 
 module.exports = { createCollectionService, collectionView };
