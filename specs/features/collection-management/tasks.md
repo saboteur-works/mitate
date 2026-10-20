@@ -286,7 +286,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-10 and US-3. Follow `tests/e2e/reveal-readonly.spec.js` for the snapshot pattern: both snapshots are taken with the app closed to keep the ordering rule of `tools/readonly-check`. The store lives in the user data dir, outside the fixture tree.
 **POS:** task_086ec0b3
-**Done:** [ ]
+**Done:** [x]
 
 ## Summary
 - Total tasks: 27
