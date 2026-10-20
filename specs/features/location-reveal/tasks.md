@@ -100,7 +100,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-3, FR-4, FR-5, FR-10 (selectable and path shown for unavailable files, label kept), FR-11 (folders do not change it) and FR-2 (the Reveal control is a native `button`, so Tab, Enter and Space work without extra code). The area sits in a new `section` below the tree (OQ-7 resolved). Load `../shared/file-detail.js` and `file-detail.js` in `index.html` after `tree-view.js`; the page's CSP is `script-src 'self'`, so no inline scripts. Render the path with `textContent`, not `innerHTML`. A path above 300 characters may exceed the length limits of some file systems per component; use several nested directories with names under 255 characters and assert the sum. If the sandbox temp directory refuses the length, record the failure rather than shortening the requirement.
 **POS:** task_401eeb42
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 10: Reveal button action and not-found error display
 **What:** Wire the Reveal button to `window.mediaOrganizer.revealFile(selectedPath)` and show the returned error, naming the path, in the detail area.
