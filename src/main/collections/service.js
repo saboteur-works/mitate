@@ -344,7 +344,7 @@ function createCollectionService({
         const confirmed = typeof confirm === 'function' && (await confirm({
           title: 'Add folder',
           message: `Add this folder to "${collection.name}"?`,
-          detail: `${line} Files already indexed in the collection may be listed more than once. `
+          detail: `${line} `
             + 'No files on disk are touched, deleted or moved.',
           confirmLabel: 'Add folder',
         }));
