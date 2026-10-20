@@ -256,7 +256,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-5 and FR-13. The switching code already exists in `create-collection.js` (`selectCollection`); this task is the test, and fixes a defect only if the test shows one. Spec-only task. Create the collections through `createCollectionService` against `openStorage` before launch, as `rescan.spec.js` does.
 **POS:** task_b8c255eb
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 25: E2E the same folder in several collections
 **What:** Add an e2e that puts one folder into two collections through the UI and checks that each keeps its own records through add, remove, delete and relaunch.
