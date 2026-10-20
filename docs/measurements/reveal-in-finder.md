@@ -1,6 +1,6 @@
 # Hands-on check: Reveal in Finder
 
-Status: not yet run. This file holds no measurement and no observed outcome. Records are added below when the check is run.
+Status: Run 2026-10-20 by the user (hands-on), with `npm start`. The user's report, verbatim: "Both internal and a thumb drive (NO NAME) worked and clicking reveal open the finder with the image selected". The records below contain only what that report states; fields marked "not reported" were not reported.
 
 The end-to-end tests stub `shell.showItemInFolder` (see `tests/support/background-main.js`), so they do not show what Finder does. This check is the hands-on run of the real action.
 
@@ -23,8 +23,20 @@ Record observed outcomes only; do not state a cause for any outcome.
 
 ## internal drive
 
-not run yet.
+- date: 2026-10-20
+- volume label and type: label not reported; internal
+- file selected in the app: yes (an image)
+- path shown matched the file: not reported separately
+- result: pass. Finder opened with the image selected (user's words).
 
-## external or network volume
+## external volume
 
-not run yet.
+- date: 2026-10-20
+- volume label and type: "NO NAME"; USB thumb drive (external)
+- file selected in the app: yes (an image)
+- path shown matched the file: not reported separately
+- result: pass. Finder opened with the image selected (user's words).
+
+## network volume
+
+Not run (no network volume tested).

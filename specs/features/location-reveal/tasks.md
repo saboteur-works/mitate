@@ -150,7 +150,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-15. This task requires the user: it needs a real, visible, non-background app run (`npm start`) on the user's Mac and the user watching Finder, with an external or network volume attached. It must not be done by an agent through background-main or any stub, and it does not block Tasks 1 to 13 or 15; it only needs the working UI from Task 10. The external drive on this machine previously returned `EPERM` for `mkdtemp` and `ls` (see `docs/measurements/atime-cat-read.md`); that is a measurement from a different operation and is not assumed to predict the reveal outcome: run the check and record what happens. Follow the format of the existing records in `docs/measurements/`.
 **POS:** task_9ff1f0b7
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 15: README note for Reveal in Finder and its test stub
 **What:** Add a short README section stating what the Reveal action does, that it is macOS-only, and that e2e tests stub it.

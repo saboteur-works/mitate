@@ -10,7 +10,7 @@ Current state: Feature 1, "index a folder collection and browse its tree" ([spec
 - per-collection rescan
 - collections and their index persisted as JSON in the app's own user-data directory
 - select a file in the tree by click or keyboard; its full absolute path is shown below the tree
-- a "Reveal in Finder" button for the selected file, with error messages for a missing file and for a file that cannot be checked (see [Reveal in Finder](#reveal-in-finder)); the hands-on check of the real reveal has not been run yet
+- a "Reveal in Finder" button for the selected file, with error messages for a missing file and for a file that cannot be checked (see [Reveal in Finder](#reveal-in-finder)); the hands-on check of the real reveal was run on 2026-10-20 (internal drive and an external USB thumb drive passed per the user's report; network volume not run), see [the record](docs/measurements/reveal-in-finder.md)
 
 ## Install
 
@@ -84,7 +84,7 @@ The action only reveals; it does not modify files. It reveals only a path that i
 
 The e2e tests do not call the real reveal. `tests/support/background-main.js` gives the app a `shell` whose `showItemInFolder` records the path into `globalThis.__moReveals` and never calls the real one, also when `MO_E2E_VISIBLE=1`. Tests read the recorded calls with `revealCalls(app)` and clear them with `resetRevealCalls(app)`, both from `tests/support/e2e-app.js`. The real channel checks still run.
 
-The hands-on check of the real reveal on macOS has not been run yet. Its result will be recorded in [docs/measurements/reveal-in-finder.md](docs/measurements/reveal-in-finder.md), which currently holds the procedure and no results.
+The hands-on check of the real reveal on macOS was run on 2026-10-20 on the internal drive and on an external USB thumb drive; both passed per the user's report. The network volume was not run. The record is in [docs/measurements/reveal-in-finder.md](docs/measurements/reveal-in-finder.md).
 
 ## Read-only check
 
