@@ -22,6 +22,11 @@
  * - Anything with node.unavailable (unavailable roots, their subfolders and
  *   their files) shows a visible "unavailable" label; nothing is hidden.
  *
+ * - Selection: at most one file is selected, held as a node id (selectedId) so it survives
+ *   virtualized re-renders; makeRow derives aria-selected / .tree-selected from it. Selecting
+ *   or clearing dispatches `file-selected` on document with detail.file = the node (at least
+ *   path and nodeId) or null. Clicking a folder never changes the selection.
+ *
  * API: window.TreeView.show(folders, files) replaces the displayed collection
  * (folders/files as returned by the collections view); TreeView.update(folders, files)
  * replaces them keeping the expanded folders.
@@ -40,6 +45,7 @@
   let rows = [];
   let expanded = new Set();
   let tree = [];
+  let selectedId = null;
   let firstRendered = -1;
   let lastRendered = -1;
 
@@ -61,6 +67,11 @@
       row.dataset.expanded = String(open);
       row.setAttribute('aria-expanded', String(open));
       row.addEventListener('click', () => toggle(node.id));
+    } else {
+      const selected = node.id === selectedId;
+      row.setAttribute('aria-selected', String(selected));
+      row.classList.toggle('tree-selected', selected);
+      row.addEventListener('click', () => selectFile(node));
     }
     const name = document.createElement('span');
     name.className = 'tree-name';
@@ -102,6 +113,34 @@
     if (expanded.has(id)) expanded.delete(id);
     else expanded.add(id);
     relayout();
+  }
+
+  function announceSelection(file) {
+    document.dispatchEvent(new CustomEvent('file-selected', { detail: { file } }));
+  }
+
+  function selectFile(node) {
+    if (node.id === selectedId) return;
+    selectedId = node.id;
+    firstRendered = -1;
+    lastRendered = -1;
+    renderWindow();
+    announceSelection({
+      nodeId: node.id,
+      path: node.path,
+      name: node.name,
+      folderId: node.folderId,
+      relativePath: node.relativePath,
+      kind: node.kind,
+      unavailable: node.unavailable === true,
+    });
+  }
+
+  // Clears the selection and announces it; does nothing when nothing is selected.
+  function clearSelection() {
+    if (selectedId === null) return;
+    selectedId = null;
+    announceSelection(null);
   }
 
   function show(folders, files) {

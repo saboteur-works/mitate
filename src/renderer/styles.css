@@ -29,6 +29,16 @@
   font-weight: 600;
 }
 
+.tree-file {
+  cursor: pointer;
+}
+
+.tree-selected {
+  background: #bfdbfe;
+  outline: 1px solid #2563eb;
+  outline-offset: -1px;
+}
+
 .tree-unavailable {
   margin-left: 8px;
   padding: 0 6px;

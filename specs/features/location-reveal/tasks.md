@@ -70,7 +70,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-1, FR-11 (folder rows keep their behaviour, a folder click never selects a file). Selection is keyed by `node.id` (`<rootFolderId>:<relativePath>`), never by `data-path`. `makeRow` must set `aria-selected` from the stored selected id so virtualized re-renders keep the state. The overlapping-roots case can be built from a collection with a root and its own subfolder as two roots (the stated duplicate until Feature 3); if the existing e2e helpers cannot create overlapping roots, create them with `createCollection` against `openStorage` as `rescan.spec.js` does. `file-selected` with `detail.file === null` is dispatched whenever selection is cleared (used by Task 7).
 **POS:** task_0a726dae
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 7: Keep or clear the selection when the tree is refreshed
 **What:** Make `TreeView.update` keep the selection when the selected node id still exists and clear it (dispatching `file-selected` with `file: null`) when it does not; make `TreeView.show` clear it.
