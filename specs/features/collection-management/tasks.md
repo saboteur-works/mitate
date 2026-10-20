@@ -266,7 +266,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-6, FR-4 (other collection untouched, end to end) and FR-13. Use a copy of the fixture tree so the disk change does not leak into other specs.
 **POS:** task_146d9736
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 26: E2E one appearance of a file across overlapping roots
 **What:** Add an e2e that builds overlapping roots through the UI and asserts a file shows once, selection identifies one row, and removing the outer root moves the files to the inner root.
