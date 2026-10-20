@@ -140,7 +140,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-13 and US-2. Reuse the pattern in `tests/e2e/full-flow.spec.js` for snapshot and compare around a run. The "selecting does not read file contents" half of FR-13 is covered by construction: the only file-system calls added by this feature are `lstat` in Task 1 and index lookups in Task 2, both asserted in those tasks' unit tests; this e2e covers the observable no-change half. Snapshotting reads the fixture, so the before and after are both taken with the app closed to keep the ordering rule in `tools/readonly-check` intact.
 **POS:** task_405e513f
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 14: Hands-on check of the real reveal per volume (requires the user)
 **What:** Record in the repository the observed outcome of a real "Reveal in Finder" on macOS for one file on the internal drive and one file on an external or network volume.
