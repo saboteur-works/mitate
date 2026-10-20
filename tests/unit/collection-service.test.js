@@ -1286,3 +1286,89 @@ describe('createCollection overlap confirmation', () => {
     expect(stored()).toEqual([]);
   });
 });
+
+describe('collection view order and resolvedPath', () => {
+  const mk = (...parts) => {
+    const d = path.join(work, ...parts);
+    fs.mkdirSync(d, { recursive: true });
+    return d;
+  };
+  const rec = (id, p) => ({ id, collectionId: 'c', path: p, unavailable: false });
+
+  // Folders are put before the collection, so putFolder does not touch folderIds.
+  function seed(folders, folderIds, extraIndex = {}) {
+    const storage = openStorage({ location: { file: storageFile } });
+    for (const f of folders) storage.putFolder(f);
+    storage.putCollection({ id: 'c', name: 'C', folderIds, createdAt: '2026-01-01T00:00:00.000Z' });
+    storage.replaceFolderIndex('fa', [{ path: path.join(folders[0].path, 'a.jpg'), relativePath: 'a.jpg', name: 'a.jpg', extension: 'jpg', kind: 'image' }]);
+    for (const [id, files] of Object.entries(extraIndex)) storage.replaceFolderIndex(id, files);
+    seeded = storage;
+    return createCollectionService({ storage, scan: throwingScan });
+  }
+  let seeded;
+
+  it('returns folders in folderIds order regardless of insertion order', () => {
+    const svc = seed([rec('fa', mk('a')), rec('fb', mk('b')), rec('fc', mk('c'))], ['fc', 'fa', 'fb']);
+    expect(svc.getCollectionView('c').folders.map((f) => f.id)).toEqual(['fc', 'fa', 'fb']);
+  });
+
+  it('puts a folder missing from folderIds after the listed ones, unlisted ones by id', () => {
+    const svc = seed(
+      [rec('fa', mk('a')), rec('fz', mk('z')), rec('fb', mk('b')), rec('fy', mk('y'))],
+      ['fb', 'fa']);
+    expect(svc.getCollectionView('c').folders.map((f) => f.id)).toEqual(['fb', 'fa', 'fy', 'fz']);
+  });
+
+  it('ignores folderIds entries with no folder record and lists a repeated id once', () => {
+    const svc = seed([rec('fa', mk('a')), rec('fb', mk('b'))], ['ghost', 'fb', 'fb', 'fa']);
+    expect(svc.getCollectionView('c').folders.map((f) => f.id)).toEqual(['fb', 'fa']);
+  });
+
+  it('resolvedPath is the realpath for an existing folder, including a symlink', () => {
+    const real = mk('real');
+    const link = path.join(work, 'link');
+    fs.symlinkSync(real, link);
+    const svc = seed([rec('fa', real), rec('fb', link)], ['fa', 'fb']);
+    const [a, b] = svc.getCollectionView('c').folders;
+    expect(a.resolvedPath).toBe(fs.realpathSync(real));
+    expect(b.path).toBe(link);
+    expect(b.resolvedPath).toBe(fs.realpathSync(link));
+    expect(b.resolvedPath).toBe(fs.realpathSync(real));
+  });
+
+  it('resolvedPath is path for a folder that does not exist', () => {
+    const gone = path.join(work, 'gone');
+    const svc = seed([rec('fa', gone)], ['fa']);
+    expect(svc.getCollectionView('c').folders[0].resolvedPath).toBe(gone);
+  });
+
+  it('never writes resolvedPath to the store', () => {
+    const svc = seed([rec('fa', mk('a')), rec('fb', path.join(work, 'gone'))], ['fa', 'fb']);
+    const before = fs.readFileSync(storageFile, 'utf8');
+    svc.getCollectionView('c');
+    expect(fs.readFileSync(storageFile, 'utf8')).toBe(before);
+    expect(before).not.toContain('resolvedPath');
+    const reopened = openStorage({ location: { file: storageFile } });
+    expect(reopened.listFolders('c').every((f) => !('resolvedPath' in f))).toBe(true);
+  });
+
+  it('the rescan view carries the same fields; files and unavailable are unchanged', async () => {
+    const { createRescanService } = require('../../src/main/collections/rescan.js');
+    const a = mk('a');
+    const xFile = { path: path.join(work, 'gone', 'x.jpg'), relativePath: 'x.jpg', name: 'x.jpg', extension: 'jpg', kind: 'image' };
+    const svc = seed([rec('fa', a), { ...rec('fb', path.join(work, 'gone')), unavailable: true }], ['fb', 'fa'], { fb: [xFile] });
+    const storage = seeded;
+    const view = svc.getCollectionView('c');
+    expect(view.files.map((f) => [f.folderId, f.name, f.unavailable])).toEqual([
+      ['fb', 'x.jpg', true],
+      ['fa', 'a.jpg', undefined],
+    ]);
+    expect('unavailable' in view.files[1]).toBe(false);
+    const rescan = createRescanService({ storage, scan: async () => [] });
+    const result = await rescan.rescanCollection('c');
+    expect(result.folders.map((f) => [f.id, f.resolvedPath])).toEqual([
+      ['fb', path.join(work, 'gone')],
+      ['fa', fs.realpathSync(a)],
+    ]);
+  });
+});

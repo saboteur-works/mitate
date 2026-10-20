@@ -25,7 +25,8 @@
  *                                          folders: [{id, path, unavailable}]}>>
  *                                          (no file records; index not read)
  *   getCollectionView(collectionId)     -> {collection, folders, files} | null
- *                                          (files read per folder, in folder order)
+ *                                          (folders in folderIds order, unlisted ones last by id,
+ *                                          each with a derived resolvedPath; files per folder, in folder order)
  *   renameCollection(id, name)          -> Promise<{collection, folders, files}>
  *                                          (name trimmed; duplicates and any length accepted)
  *   addFolder(collectionId, dirPath)    -> Promise<{collection, folders, files} | {canceled: true}>
@@ -125,10 +126,38 @@ function contains(dir, file) {
 // The stored view of one collection, or null when it does not exist. File
 // records of an unavailable folder carry unavailable: true; the flag is
 // derived from the folder record, never read from the stored file record.
+// Folders come back in collection.folderIds order; a folder the list lacks (a
+// stale v1 folderIds) follows the listed ones, by id. Each folder carries a
+// derived resolvedPath (fs.realpathSync, or path when it cannot be resolved),
+// never stored. Sync realpath on a handful of roots is cheap.
+function resolvePathOrSelf(p) {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
+function orderedFolders(collection, stored) {
+  const ids = Array.isArray(collection.folderIds) ? collection.folderIds : [];
+  const byId = new Map(stored.map((f) => [f.id, f]));
+  const listed = [];
+  for (const id of ids) {
+    const folder = byId.get(id);
+    if (folder) {
+      listed.push(folder);
+      byId.delete(id); // a repeated id is listed once
+    }
+  }
+  const unlisted = [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return [...listed, ...unlisted];
+}
+
 function collectionView(storage, collectionId) {
   const collection = storage.getCollection(collectionId);
   if (!collection) return null;
-  const folders = storage.listFolders(collectionId);
+  const folders = orderedFolders(collection, storage.listFolders(collectionId))
+    .map((f) => ({ ...f, resolvedPath: resolvePathOrSelf(f.path) }));
   const files = folders.flatMap((folder) =>
     storage.getIndex({ folderId: folder.id }).map((f) => {
       const { unavailable, ...rest } = f;

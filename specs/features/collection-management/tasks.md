@@ -116,7 +116,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-9 (inputs needed by the build-time rule: the tie-break order and symlink resolution) and FR-6 (v1 stores whose `folderIds` is stale still list every folder). `rescan.js` calls the same `collectionView`, so it gains the fields with no change. `collections:list` summaries are not changed. Sync `realpathSync` on a handful of roots is cheap; record it in the header comment.
 **POS:** task_688dc8e9
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 11: Tree build de-duplication
 **What:** Make `buildTree` in `src/shared/tree-model.js` show a file once per collection by dropping it from an inner root (or a later identical root) when an owning root holds a record for it.
