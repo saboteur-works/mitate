@@ -93,7 +93,7 @@ test('rescan is user-triggered, picks up added and removed files, and relaunch s
 test('Rescan stays disabled for a collection whose rescan is running, even after selecting another collection and back', async () => {
   const userDataDir = newUserDataDir('rescan-busy-e2e');
   const fixture = buildFixtureTree();
-  const other = fs.mkdtempSync(path.join(os.tmpdir(), 'media-organizer-rescan-busy-other-'));
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), 'mitate-rescan-busy-other-'));
   fs.writeFileSync(path.join(other, 'b.pdf'), 'b\n');
   let session;
   try {

@@ -10,7 +10,7 @@ test('app launches and opens a window with a title', async () => {
   try {
     const title = await window.title();
     expect(title.length).toBeGreaterThan(0);
-    expect(title).toBe('Media Organizer');
+    expect(title).toBe('Mitate');
   } finally {
     await app.close();
     fs.rmSync(userDataDir, { recursive: true, force: true });

@@ -14,7 +14,7 @@
  * config passed to openStorage(config). It is either `{ file }` (an absolute
  * file path) or `{ baseDir }` (an absolute directory; the store file is
  * <baseDir>/store.json). With no location the default is
- * <app-data dir>/media-organizer/store.json (see defaultStorageFile), the
+ * <app-data dir>/mitate/store.json (see defaultStorageFile), the
  * per-user app-data directory, not a collection folder (FR-13). The module
  * does not use Electron; main may pass app.getPath('userData') as
  * `location.baseDir`.
@@ -78,7 +78,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const STORE_FILE_NAME = 'store.json';
-const APP_DIR_NAME = 'media-organizer';
+const APP_DIR_NAME = 'mitate';
 const FORMAT_VERSION = 1;
 
 function appDataDir() {

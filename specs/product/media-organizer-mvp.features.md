@@ -1,4 +1,4 @@
-# Feature Breakdown: Media Organizer — MVP
+# Feature Breakdown: Mitate — MVP
 
 **Source spec:** `specs/product/media-organizer-mvp.md`
 **Milestone scope:** MVP

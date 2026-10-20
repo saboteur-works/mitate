@@ -1,7 +1,8 @@
 {
-  "name": "media-organizer",
+  "name": "mitate",
+  "productName": "Mitate",
   "version": "0.1.0",
-  "description": "Media organizer: index a folder collection and browse its tree",
+  "description": "Mitate: index a folder collection and browse its tree",
   "private": true,
   "main": "src/main/main.js",
   "scripts": {

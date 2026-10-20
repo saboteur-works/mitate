@@ -1,4 +1,4 @@
-# Media Organizer (working title)
+# Mitate
 
 A read-only desktop lens over folders you already have. You group folders into named collections, and the app indexes every supported media file inside them, however deeply nested, and shows the folder tree. It never moves, renames, edits or deletes a file. See [docs/concept.md](docs/concept.md) for the full concept.
 

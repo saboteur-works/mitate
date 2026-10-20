@@ -13,9 +13,9 @@ const { expect, _electron: electron } = require('@playwright/test');
 const { APP_ENTRY } = require('./app-entry.js');
 const { wrapHandler } = require('./ipc-wrap.js');
 
-// A fresh user data dir named media-organizer-<label>-XXXXXX under os.tmpdir().
+// A fresh user data dir named mitate-<label>-XXXXXX under os.tmpdir().
 function newUserDataDir(label) {
-  return fs.mkdtempSync(path.join(os.tmpdir(), `media-organizer-${label}-`));
+  return fs.mkdtempSync(path.join(os.tmpdir(), `mitate-${label}-`));
 }
 
 async function launchApp(userDataDir) {

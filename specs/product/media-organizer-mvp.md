@@ -1,12 +1,12 @@
-# Product Spec: Media Organizer — MVP
+# Product Spec: Mitate — MVP
 
 **Milestone scope:** MVP
 **Status:** Draft
-**Source concept:** Media Organizer (working title), `docs/concept.md`
+**Source concept:** Mitate, `docs/concept.md`
 **Other milestones:** `media-organizer-v1.md`, `media-organizer-v2.md`
 
 ## Overview
-Media Organizer is a read-only desktop app, macOS first. It gives users one place to browse and play media spread across folders, external drives and network shares.
+Mitate is a read-only desktop app, macOS first. It gives users one place to browse and play media spread across folders, external drives and network shares.
 
 Existing tools either show one folder at a time (Finder) or import files into a managed library (Photos, Lightroom, Eagle). This app indexes folders where they already are:
 - Users group folders into named collections and switch between them.
