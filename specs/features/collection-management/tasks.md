@@ -166,7 +166,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-12 (renderer half, shared state for Task 23). Behaviour of the Rescan button must not change. Load `collection-busy.js` before `rescan-button.js` in `index.html`. Edits `index.html` (also edited by Tasks 11, 16, 17, 19, 21) and `rescan-button.js`.
 **POS:** task_90b180c9
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 16: Management panel and rename in the UI
 **What:** Add the management panel for the selected collection with a rename field and button, `collections-changed` wiring in `create-collection.js`, and an e2e of rename.
