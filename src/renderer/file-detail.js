@@ -9,7 +9,8 @@
  * button; a click calls window.mediaOrganizer.revealFile(path) once. A returned
  * { ok: false, error } or a rejected promise is shown in the reveal-error
  * element (main-process text unchanged); the error is cleared on every
- * selection change. The button stays disabled while a call is in flight, and a
+ * selection change and on every `tree-updated` event (tree show/update, e.g. a rescan);
+ * a reveal response that was in flight when either happened is ignored. The button stays disabled while a call is in flight, and a
  * response that arrives after the selection changed is ignored.
  */
 (function () {
@@ -19,6 +20,7 @@
   const errorEl = document.querySelector('[data-testid="reveal-error"]');
   let current = null;
   let inFlight = false;
+  let epoch = 0; // bumped on every selection change or tree refresh
 
   function setError(text) {
     errorEl.textContent = text;
@@ -27,6 +29,7 @@
 
   function render(file) {
     const view = globalThis.FileDetail.describeSelection(file);
+    epoch += 1;
     current = view.pathText === '' ? null : file;
     pathEl.textContent = view.pathText || view.emptyText;
     pathEl.classList.toggle('file-path-empty', view.pathText === '');
@@ -37,6 +40,7 @@
   async function onReveal() {
     if (!current || inFlight) return;
     const requested = current;
+    const startedAt = epoch;
     inFlight = true;
     reveal.disabled = true;
     let message = '';
@@ -48,10 +52,14 @@
     }
     inFlight = false;
     reveal.disabled = current === null;
-    if (current === requested) setError(message);
+    if (current === requested && epoch === startedAt) setError(message);
   }
 
   reveal.addEventListener('click', onReveal);
   document.addEventListener('file-selected', (e) => render(e.detail ? e.detail.file : null));
+  document.addEventListener('tree-updated', () => {
+    epoch += 1;
+    setError('');
+  });
   render(null);
 })();

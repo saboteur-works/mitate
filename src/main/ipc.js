@@ -24,8 +24,9 @@
  *                          reveals exactly that path in the OS file manager. A path
  *                          that is not a non-empty string, or that service.findIndexedFile
  *                          does not return, gives code 'NOT_INDEXED' before any file-system
- *                          access; a missing file gives code 'FILE_NOT_FOUND' (thrown by
- *                          revealFile); no revealFile injected gives { ok: false, error }.
+ *                          access; a missing file gives code 'FILE_NOT_FOUND' and a file whose
+ *                          existence cannot be checked (e.g. EACCES) gives code
+ *                          'FILE_UNCHECKABLE' (both thrown by revealFile); no revealFile injected gives { ok: false, error }.
  *
  * Service errors are returned as { ok: false, error } (plus code when the error
  * has one) so the renderer can show the message without Electron's "Error

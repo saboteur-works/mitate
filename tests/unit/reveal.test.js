@@ -31,6 +31,25 @@ describe('revealFile', () => {
     expect(shell.showItemInFolder).not.toHaveBeenCalled();
   });
 
+  it.each(['EACCES', 'EPERM'])('throws FILE_UNCHECKABLE (not FILE_NOT_FOUND) on %s and does not reveal', async (code) => {
+    const shell = { showItemInFolder: vi.fn() };
+    const exists = vi.fn().mockRejectedValue(Object.assign(new Error(`${code}: refused`), { code }));
+    const p = '/locked/dir/file.txt';
+    const err = await createRevealer({ shell, exists }).revealFile(p).catch((e) => e);
+    expect(err.code).toBe('FILE_UNCHECKABLE');
+    expect(err.message).toBe(`Can't check this file: permission denied (${code}): ${p}`);
+    expect(err.message).not.toMatch(/not found/i);
+    expect(shell.showItemInFolder).not.toHaveBeenCalled();
+  });
+
+  it('rethrows other unexpected existence-check errors unchanged', async () => {
+    const shell = { showItemInFolder: vi.fn() };
+    const boom = Object.assign(new Error('too many'), { code: 'EMFILE' });
+    const exists = vi.fn().mockRejectedValue(boom);
+    await expect(createRevealer({ shell, exists }).revealFile('/x')).rejects.toBe(boom);
+    expect(shell.showItemInFolder).not.toHaveBeenCalled();
+  });
+
   it('never reveals any path other than the one given (no parent fallback)', async () => {
     const missing = setup(false);
     await missing.revealer.revealFile('/some/dir/missing.txt').catch(() => {});

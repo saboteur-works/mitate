@@ -18,7 +18,19 @@ async function defaultExists(filePath) {
 // parent-directory fallback: a missing path is an error.
 function createRevealer({ shell, exists = defaultExists }) {
   async function revealFile(filePath) {
-    if (!(await exists(filePath))) {
+    let present;
+    try {
+      present = await exists(filePath);
+    } catch (err) {
+      if (err && (err.code === 'EACCES' || err.code === 'EPERM')) {
+        // The check itself was refused: say so, never claim the file is missing.
+        const refused = new Error(`Can't check this file: permission denied (${err.code}): ${filePath}`);
+        refused.code = 'FILE_UNCHECKABLE';
+        throw refused;
+      }
+      throw err;
+    }
+    if (!present) {
       const err = new Error(`File not found: ${filePath}`);
       err.code = 'FILE_NOT_FOUND';
       throw err;

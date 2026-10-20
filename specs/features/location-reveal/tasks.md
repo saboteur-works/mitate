@@ -130,7 +130,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-9, FR-10, FR-6 (rejection), FR-12 interplay (the selection is kept until a rescan). The chmod 000 case is deliberately written as an observation: whether `lstat` of a file inside an unreadable folder succeeds is not established in this document, so the test records whichever happens and asserts only the invariants that hold for both. Restore permissions in `afterEach`; skip with a stated reason when running as root. Run `chmod` fixtures on a copy of the fixture tree.
 **POS:** task_363f3829
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 13: Read-only check around select and reveal
 **What:** Add an e2e that snapshots the fixture tree with `tools/readonly-check` before and after selecting files and activating the stubbed Reveal, and asserts no differences.

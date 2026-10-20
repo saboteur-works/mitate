@@ -29,6 +29,7 @@
  *
  * - show clears the selection; update keeps it only if the selected node id exists in the rebuilt
  *   tree, else clears it. Clearing dispatches file-selected with detail.file = null.
+ *   Both then dispatch `tree-updated` on document (no detail), kept selection or not.
  *
  * - Keyboard (FR-2, FR-11): the container is the single Tab stop (role="tree", tabindex 0). Focus is
  *   a node id (focusedId) resolved against the flattened visible rows; DOM focus stays on the
@@ -232,6 +233,7 @@
     if (clear) selectedId = null;
     relayout();
     if (clear) announceSelection(null);
+    document.dispatchEvent(new CustomEvent('tree-updated'));
   }
 
   function show(folders, files) {
