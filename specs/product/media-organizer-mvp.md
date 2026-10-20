@@ -138,6 +138,7 @@ Answer: the app warns and requires confirmation; on confirm both folders stay (F
 - [post-v2] Windows and Linux desktop releases.
 - [post-v2] Third-party decoders (wmv, wma, avi, flv, DNxHD). Deferred per the OQ-4 resolution: index-only in MVP (FR-14), revisited post-v2.
 - [post-v2] Adding individual files to a collection.
+- Open a file in its default app from the app (no milestone assigned). Deferred because another app could modify or lock the file, which touches the read-only promise (FR-17). Raised in `specs/features/location-reveal.md` (OQ-4).
 
 ## Resolved decisions (2026-10-18)
 - **Packages and symlinks:** package bundles and symlinks are skipped in MVP (FR-9), with an opt-in in v1.

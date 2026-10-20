@@ -530,3 +530,70 @@ describe('rescan of a collection removed while it is scanning', () => {
     );
   });
 });
+
+describe('findIndexedFile', () => {
+  async function setup() {
+    const root = path.join(work, 'find-root');
+    fs.mkdirSync(path.join(root, 'sub'), { recursive: true });
+    const storage = openStorage({ location: { file: storageFile } });
+    const svc = createCollectionService({ storage, scan: stubScan });
+    const view = await svc.createCollection('c', [root]);
+    return { root, storage, svc, view };
+  }
+
+  it('returns the stored record for an indexed file path', async () => {
+    const { root, svc, view } = await setup();
+    const found = svc.findIndexedFile(path.join(root, 'a.jpg'));
+    expect(found).toEqual(view.files[0]);
+    expect(found.name).toBe('a.jpg');
+  });
+
+  it('returns null for a path that is not indexed', async () => {
+    const { root, svc } = await setup();
+    expect(svc.findIndexedFile(path.join(root, 'other.jpg'))).toBeNull();
+  });
+
+  it('returns null for a folder path (root or subfolder)', async () => {
+    const { root, svc } = await setup();
+    expect(svc.findIndexedFile(root)).toBeNull();
+    expect(svc.findIndexedFile(path.join(root, 'sub'))).toBeNull();
+  });
+
+  it('returns null when the path differs by trailing segment or case', async () => {
+    const { root, svc } = await setup();
+    const file = path.join(root, 'a.jpg');
+    expect(svc.findIndexedFile(file + path.sep)).toBeNull();
+    expect(svc.findIndexedFile(path.join(file, 'x'))).toBeNull();
+    expect(svc.findIndexedFile(path.join(root, 'A.jpg'))).toBeNull();
+    expect(svc.findIndexedFile(path.join(root, 'a.jp'))).toBeNull();
+  });
+
+  it('still finds a file whose folder is unavailable', async () => {
+    const { root, svc } = await setup();
+    fs.rmSync(root, { recursive: true });
+    const summaries = await svc.listCollectionSummaries();
+    expect(summaries[0].folders[0].unavailable).toBe(true);
+    const found = svc.findIndexedFile(path.join(root, 'a.jpg'));
+    expect(found).not.toBeNull();
+    expect(found.name).toBe('a.jpg');
+  });
+
+  it('leaves the stored index unchanged and does not touch the file system', async () => {
+    const { root, storage, svc } = await setup();
+    const before = JSON.stringify(storage.getIndex());
+    const storeBefore = fs.readFileSync(storageFile, 'utf8');
+    const names = ['statSync', 'lstatSync', 'existsSync', 'readdirSync', 'readFileSync', 'writeFileSync', 'renameSync', 'openSync'];
+    const spies = names.map((name) => vi.spyOn(fs, name));
+    const statSpy = vi.spyOn(fs.promises, 'stat');
+    try {
+      svc.findIndexedFile(path.join(root, 'a.jpg'));
+      svc.findIndexedFile(path.join(root, 'missing.jpg'));
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+      expect(statSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.restoreAllMocks();
+    }
+    expect(JSON.stringify(storage.getIndex())).toBe(before);
+    expect(fs.readFileSync(storageFile, 'utf8')).toBe(storeBefore);
+  });
+});

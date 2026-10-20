@@ -20,6 +20,13 @@
  *                          { ok: false, error }. Never invoked on launch.
  *                          A rescan already running for the same collection gives
  *                          { ok: false, error, code: 'RESCAN_IN_PROGRESS' }.
+ *   files:reveal        (filePath) -> { ok: true } | { ok: false, error, code? }
+ *                          reveals exactly that path in the OS file manager. A path
+ *                          that is not a non-empty string, or that service.findIndexedFile
+ *                          does not return, gives code 'NOT_INDEXED' before any file-system
+ *                          access; a missing file gives code 'FILE_NOT_FOUND' and a file whose
+ *                          existence cannot be checked (e.g. EACCES) gives code
+ *                          'FILE_UNCHECKABLE' (both thrown by revealFile); no revealFile injected gives { ok: false, error }.
  *
  * Service errors are returned as { ok: false, error } (plus code when the error
  * has one) so the renderer can show the message without Electron's "Error
@@ -34,11 +41,12 @@ const CHANNELS = {
   listCollections: 'collections:list',
   getCollectionView: 'collections:getView',
   rescanCollection: 'collections:rescan',
+  revealFile: 'files:reveal',
 };
 
 const PICKER_PROPERTIES = ['openDirectory', 'multiSelections'];
 
-function registerIpc({ ipcMain, dialog, service, rescanService = null, getWindow = () => null }) {
+function registerIpc({ ipcMain, dialog, service, rescanService = null, revealFile = null, getWindow = () => null }) {
   const handle = (channel, fn) => ipcMain.handle(channel, fn);
 
   async function guard(fn) {
@@ -80,6 +88,19 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, getWindow
       if (!rescanService) throw new Error('Rescan is not available');
       const { summary, ...view } = await rescanService.rescanCollection(collectionId);
       return { view, summary };
+    }));
+
+  // The index check runs first so an unindexed path never reaches the file system.
+  handle(CHANNELS.revealFile, (_event, filePath) =>
+    guard(async () => {
+      if (typeof filePath !== 'string' || filePath === '' || !service.findIndexedFile(filePath)) {
+        const err = new Error('File is not in the index');
+        err.code = 'NOT_INDEXED';
+        throw err;
+      }
+      if (!revealFile) throw new Error('Reveal is not available');
+      await revealFile(filePath);
+      return {};
     }));
 }
 

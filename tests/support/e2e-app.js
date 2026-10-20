@@ -3,7 +3,7 @@
 /*
  * Helpers shared by the e2e specs: launching the real app against a temp user
  * data dir, selecting a collection, addressing tree rows, stubbing the native
- * folder picker, and holding a main-process IPC handler behind a gate.
+ * folder picker, reading recorded shell reveals, and holding a main-process IPC handler behind a gate.
  */
 
 const fs = require('node:fs');
@@ -126,4 +126,14 @@ async function gateChannel(app, channel, { keyed = false } = {}) {
   };
 }
 
-module.exports = { newUserDataDir, launchApp, rowAt, selectOnlyCollection, stubFolderPicker, gateChannel };
+// Paths passed to shell.showItemInFolder since launch (or the last reset), in
+// call order. Recorded by the stub in tests/support/background-main.js.
+const revealCalls = (app) => app.evaluate(() => [...globalThis.__moReveals]);
+
+// Empties the recorded reveal calls.
+const resetRevealCalls = (app) => app.evaluate(() => { globalThis.__moReveals.length = 0; });
+
+module.exports = {
+  newUserDataDir, launchApp, rowAt, selectOnlyCollection, stubFolderPicker, gateChannel,
+  revealCalls, resetRevealCalls,
+};
