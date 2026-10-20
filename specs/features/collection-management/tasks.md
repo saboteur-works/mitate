@@ -66,7 +66,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers the confirmation requirements of FR-2 and FR-8 (the dialog seam; wording is built by the callers) and FR-13 (testability without a modal). Mirrors how `ipc.js` passes the window to `showOpenDialog`. Wiring into `main.js` is Task 12; the e2e stub is Task 14.
 **POS:** task_95084259
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 6: Service rename and remove folder
 **What:** Add `renameCollection(id, name)` and `removeFolder(collectionId, folderId)` to the collection service, with trimming, last-folder refusal, busy refusal and one transaction each.
