@@ -46,7 +46,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-8 (seven listed cases plus identical path, wording, naming the overlapping folder) and FR-13 (overlap unit tests). Pure apart from the injected `realpath` (default `fs.realpathSync`); no confirmation dialog here, only the text. When several existing folders overlap, name the first in the given order and mention the count.
 **POS:** task_7513335f
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 4: In-flight guard shared by rescan and management actions
 **What:** Add `src/main/collections/in-flight.js` (`createInFlightGuard()`) and make the rescan service use it, so a rescan and an add-folder scan of one collection can exclude each other.
