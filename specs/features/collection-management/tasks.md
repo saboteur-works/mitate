@@ -146,7 +146,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-6 (no format bump, existing v1 store opens unchanged), FR-11 and FR-4. Generate the fixture with a throwaway script (not committed) that runs `createCollection` through the service on the code at the commit before Task 1, over a small temp tree, then replace the temp root with a placeholder that the test rewrites to a fresh temp path before opening. Include two collections that share one folder path as separate records, one folder missing from `folderIds`, and one `unavailable: true` folder. The test must not depend on the fixture's recorded paths existing.
 **POS:** task_fadd843e
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 14: E2E confirmation stub and its smoke test
 **What:** Give the app a `dialog.showMessageBox` stub in `tests/support/background-main.js`, add `stubConfirm` and `confirmCalls` to `e2e-app.js`, and prove the stub and the delete channel with one e2e.
