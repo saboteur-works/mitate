@@ -236,7 +236,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-8 (creation case) and FR-6 (same folder at creation) in the UI. `collections:create` returns `{ ok: true, canceled: true }` on cancel; the current code would treat it as success and clear the form, so branch on `canceled` first. Edits `create-collection.js` after Task 21 (declared dependency for file ordering).
 **POS:** task_982bde68
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 23: Disable management controls while a scan runs
 **What:** Disable rename, delete, add-folder and remove-folder controls while the selected collection is busy, and show a clear refusal when the main process refuses.

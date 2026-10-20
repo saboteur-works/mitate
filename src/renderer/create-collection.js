@@ -99,6 +99,8 @@
     try {
       const result = await api.createCollection(nameInput.value, folders);
       if (!result.ok) return showError(result.error);
+      // The user declined the overlap confirmation: nothing was created, keep the form as it was.
+      if (result.canceled) return;
       folders = [];
       nameInput.value = '';
       renderFolders();
