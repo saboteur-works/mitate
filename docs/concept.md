@@ -1,4 +1,4 @@
-## Concept: Media Organizer (working title)
+## Concept: Mitate
 
 ### Problem & Value
 People keep their media in folders on internal disks, external drives and network shares. Over time it ends up spread across dozens of nested directories. Finder shows one folder at a time, so you can't see "every video in my project archive" or "all audio across these three drives" in one place. The tools that do aggregate media mostly want something in return. Apple Photos and Lightroom import files into a managed library. Eagle copies files into its own store. Others only handle one media type. People who want to leave their folder structure alone are left with Finder plus Spotlight, and neither was built for browsing media. Collections of external drives and NAS volumes keep growing, which makes this worse every year.

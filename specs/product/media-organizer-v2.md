@@ -1,8 +1,8 @@
-# Product Spec: Media Organizer — v2
+# Product Spec: Mitate — v2
 
 **Milestone scope:** v2
 **Status:** Draft
-**Source concept:** Media Organizer (working title), `docs/concept.md`
+**Source concept:** Mitate, `docs/concept.md`
 **Builds on:** `media-organizer-mvp.md`, `media-organizer-v1.md`. This spec cites requirements from those specs as "MVP FR-n" and "v1 FR-n".
 
 ## Overview

@@ -1,0 +1,48 @@
+/* Virtualized tree view. ROW_HEIGHT in tree-view.js must equal .tree-row height. */
+.tree-view {
+  position: relative;
+  height: 400px;
+  overflow-y: auto;
+  border: 1px solid #888;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.tree-spacer {
+  position: relative;
+  width: 100%;
+}
+
+.tree-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 24px;
+  line-height: 24px;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.tree-folder {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.tree-unavailable {
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: #b45309;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.collection-selected {
+  background: #dbeafe;
+}
+
+[data-testid="collection-item"] {
+  cursor: pointer;
+}

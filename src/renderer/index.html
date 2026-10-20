@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'" />
+    <title>Mitate</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <h1 id="heading">Mitate</h1>
+    <section>
+      <h2>New collection</h2>
+      <label>Name <input type="text" data-testid="collection-name" /></label>
+      <button type="button" data-testid="add-folder">Add folder</button>
+      <ul data-testid="folder-list"></ul>
+      <button type="button" data-testid="create-collection">Create collection</button>
+      <p data-testid="create-error" role="alert" hidden></p>
+    </section>
+    <section>
+      <h2>Collections</h2>
+      <ul data-testid="collection-list"></ul>
+    </section>
+    <section>
+      <h2>Tree</h2>
+      <button type="button" data-testid="rescan" disabled>Rescan</button>
+      <span data-testid="rescan-status" role="status"></span>
+      <div class="tree-view" data-testid="tree-view"></div>
+    </section>
+    <script src="renderer.js"></script>
+    <script src="../shared/tree-model.js"></script>
+    <script src="tree-view.js"></script>
+    <script src="create-collection.js"></script>
+    <script src="rescan-button.js"></script>
+  </body>
+</html>
