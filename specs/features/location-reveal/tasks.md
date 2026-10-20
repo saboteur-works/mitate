@@ -50,7 +50,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-14 (the replacement of the reveal function and recording of its path, in the shared support code) and the main-process half of FR-6. `app.evaluate` receives the real `electron` module, not the proxied one, so the stub must be installed in the proxy inside `background-main.js` (extend the `get` trap with `key === 'shell'`), and the recorded array is read through `globalThis.__moReveals`. The stub must not call the real `shell.showItemInFolder` under any condition, including `MO_E2E_VISIBLE=1`. Export a helper such as `revealCalls(app)` from `e2e-app.js`; keep the stub self-contained in `background-main.js` and document it in that file's header comment.
 **POS:** task_0b32d4e0
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 5: Pure file-detail model with unit tests
 **What:** Add a DOM-free module that maps a selected file (or none) to what the detail area shows: the path text, the empty-state text, and whether Reveal is disabled.

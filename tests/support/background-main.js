@@ -20,7 +20,16 @@
  * The same copy of `electron` records ipcMain.handle registrations in
  * globalThis.__moIpcHandlers (channel -> handler) for tests/support/ipc-wrap.js.
  *
+ * The same copy also replaces `shell` with a proxy whose showItemInFolder is a
+ * stub: it pushes its argument onto globalThis.__moReveals (an array, empty at
+ * load) and does nothing else, so a test never opens a Finder window. The real
+ * shell.showItemInFolder is never called, under any condition, including
+ * MO_E2E_VISIBLE=1: the stub applies regardless of visibility. Every other key
+ * of `shell` goes to the real shell. The channel code in src/main (argument
+ * guard, index check, existence check) is not stubbed and still runs.
+ *
  * Set MO_E2E_VISIBLE=1 to run with normal, visible windows (for debugging).
+ * Windows become visible; the shell stub stays in place.
  */
 
 const path = require('node:path');
@@ -44,6 +53,20 @@ const recordingIpcMain = new Proxy(electron.ipcMain, {
   },
 });
 
+// showItemInFolder is recorded, never forwarded. Other shell members are the real ones.
+globalThis.__moReveals = [];
+const recordingShell = new Proxy(electron.shell, {
+  get(target, key) {
+    if (key === 'showItemInFolder') {
+      return (fullPath) => {
+        globalThis.__moReveals.push(fullPath);
+      };
+    }
+    const value = target[key];
+    return typeof value === 'function' ? value.bind(target) : value;
+  },
+});
+
 const visible = process.env.MO_E2E_VISIBLE === '1';
 class HiddenWindow extends electron.BrowserWindow {
   constructor(options = {}) {
@@ -57,6 +80,7 @@ class HiddenWindow extends electron.BrowserWindow {
 const backgroundElectron = new Proxy(electron, {
   get(target, key) {
     if (key === 'ipcMain') return recordingIpcMain;
+    if (key === 'shell') return recordingShell;
     if (key === 'BrowserWindow' && !visible) return HiddenWindow;
     return target[key];
   },
