@@ -156,7 +156,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-13 (e2e stub seam, no real modal) and the confirmation half of FR-2. The proxy in `background-main.js` must be added next to the existing `ipcMain` and `shell` proxies (extend the `get` trap with `key === 'dialog'`): every key except `showMessageBox` is forwarded to the real `dialog` with `this` bound, so a later `dialog.showOpenDialog = ...` assignment made by `stubFolderPicker` through `app.evaluate` (which sees the real module) is still seen by the app. The stub never calls the real `showMessageBox`, also under `MO_E2E_VISIBLE=1`; document it in the header comment. `stubConfirm(app, answers)` takes an array of booleans consumed in order; `confirmCalls(app)` returns the recorded option objects.
 **POS:** task_b3af2a8f
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 15: Renderer in-flight state shared by controls
 **What:** Add `src/renderer/collection-busy.js` (`CollectionBusy.begin(id)`, `end(id)`, `isBusy(id)`, firing `collection-busy-changed` on `document`) and make the Rescan button use it.

@@ -28,6 +28,17 @@
  * of `shell` goes to the real shell. The channel code in src/main (argument
  * guard, index check, existence check) is not stubbed and still runs.
  *
+ * The same copy also replaces `dialog` with a proxy whose showMessageBox is a
+ * stub: it pushes the options object (the last argument; a leading parent
+ * window is dropped) onto globalThis.__moConfirms and answers from the queue
+ * globalThis.__moConfirmAnswers (booleans, consumed in order, set by
+ * stubConfirm in tests/support/e2e-app.js). true answers { response: 0 } (the
+ * confirm button), false or an empty queue answers { response: 1 } (Cancel).
+ * The real dialog.showMessageBox is never called, under any condition,
+ * including MO_E2E_VISIBLE=1. Every other `dialog` key is read from the real
+ * dialog at access time, so showOpenDialog (replaced by stubFolderPicker
+ * through app.evaluate, which sees the real module) and showErrorBox still work.
+ *
  * Set MO_E2E_VISIBLE=1 to run with normal, visible windows (for debugging).
  * Windows become visible; the shell stub stays in place.
  */
@@ -67,6 +78,24 @@ const recordingShell = new Proxy(electron.shell, {
   },
 });
 
+// showMessageBox is recorded and answered from a queue, never forwarded. Other
+// dialog members are looked up on the real dialog on each access.
+globalThis.__moConfirms = [];
+globalThis.__moConfirmAnswers = [];
+const stubbedDialog = new Proxy(electron.dialog, {
+  get(target, key) {
+    if (key === 'showMessageBox') {
+      return async (...args) => {
+        globalThis.__moConfirms.push(args[args.length - 1]);
+        const confirmed = globalThis.__moConfirmAnswers.shift() === true;
+        return { response: confirmed ? 0 : 1, checkboxChecked: false };
+      };
+    }
+    const value = target[key];
+    return typeof value === 'function' ? value.bind(target) : value;
+  },
+});
+
 const visible = process.env.MO_E2E_VISIBLE === '1';
 class HiddenWindow extends electron.BrowserWindow {
   constructor(options = {}) {
@@ -81,6 +110,7 @@ const backgroundElectron = new Proxy(electron, {
   get(target, key) {
     if (key === 'ipcMain') return recordingIpcMain;
     if (key === 'shell') return recordingShell;
+    if (key === 'dialog') return stubbedDialog;
     if (key === 'BrowserWindow' && !visible) return HiddenWindow;
     return target[key];
   },
