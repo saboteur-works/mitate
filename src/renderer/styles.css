@@ -112,3 +112,9 @@
   color: #b45309;
   font-size: 12px;
 }
+
+[data-testid="manage-panel"] button:disabled,
+[data-testid="manage-panel"] input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

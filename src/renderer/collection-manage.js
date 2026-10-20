@@ -3,7 +3,8 @@
 /*
  * Management panel for the selected collection (FR-2: Delete collection, confirmed in the main process; FR-1: rename, FR-3: folder list and
  * Remove folder, no confirmation; FR-7: Add folder through the folder picker, one collections:addFolder
- * call per picked folder, in pick order, the collection marked busy meanwhile). Removing a folder of the shown collection refreshes the tree
+ * call per picked folder, in pick order, the collection marked busy meanwhile; FR-12: all four controls are disabled while the managed collection is busy, following
+ * 'collection-busy-changed'). Removing a folder of the shown collection refreshes the tree
  * in place with TreeView.update (the selection survives only if its node still exists). It manages the
  * collection that 'collection-selected' last announced and hides itself when
  * the announcement carries collectionId null. After a successful action it
@@ -33,14 +34,19 @@
     errorBox.hidden = !message;
   }
 
+  // FR-12: true while a rescan or add-folder scan of the managed collection runs. The main
+  // process refuses the same actions with COLLECTION_BUSY; disabling is the renderer half.
+  const isBusy = () => managedId !== null && window.CollectionBusy.isBusy(managedId);
+
   function sync() {
     const active = managedId !== null;
+    const busy = isBusy();
     panel.hidden = !active;
-    renameInput.disabled = !active || renaming;
-    renameButton.disabled = !active || renaming;
-    addButton.disabled = !active || adding;
-    deleteButton.disabled = !active || deleting;
-    for (const button of folderList.querySelectorAll('button')) button.disabled = !active || removing;
+    renameInput.disabled = !active || renaming || busy;
+    renameButton.disabled = !active || renaming || busy;
+    addButton.disabled = !active || adding || busy;
+    deleteButton.disabled = !active || deleting || busy;
+    for (const button of folderList.querySelectorAll('button')) button.disabled = !active || removing || busy;
   }
 
   // folders: [{ id, path, unavailable }] as in the summaries and in the view.
@@ -90,7 +96,7 @@
   }
 
   async function removeFolder(folderId) {
-    if (managedId === null || removing) return;
+    if (managedId === null || removing || isBusy()) return;
     const collectionId = managedId;
     showError('');
     removing = true;
@@ -119,7 +125,7 @@
   // stops the rest and is shown. A cancelled overlap confirmation adds nothing
   // for that folder and is not an error.
   async function addFolders() {
-    if (managedId === null || adding) return;
+    if (managedId === null || adding || isBusy()) return;
     const collectionId = managedId;
     showError('');
     adding = true;
@@ -154,7 +160,7 @@
   }
 
   async function rename() {
-    if (managedId === null || renaming) return;
+    if (managedId === null || renaming || isBusy()) return;
     const collectionId = managedId;
     showError('');
     renaming = true;
@@ -176,7 +182,7 @@
   // announces 'collection-deleted' (the page clears the tree and selection if it was the
   // shown collection) and then 'collections-changed' so the list refreshes.
   async function deleteCollection() {
-    if (managedId === null || deleting) return;
+    if (managedId === null || deleting || isBusy()) return;
     const collectionId = managedId;
     showError('');
     deleting = true;
@@ -202,5 +208,6 @@
     if (event.key === 'Enter') rename();
   });
   document.addEventListener('collection-selected', (event) => select(event.detail.collectionId));
+  document.addEventListener('collection-busy-changed', sync);
   sync();
 })();

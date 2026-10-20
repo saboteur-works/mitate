@@ -246,7 +246,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-12 and FR-13 (in-flight refusals end to end). The disabled state follows `collection-busy-changed` and `collection-selected`; busy is begun by the rescan button (Task 15) and by the panel's add-folder (Task 19). The main-process refusal is the authority; the disabled controls are the renderer half.
 **POS:** task_06d4ebbd
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 24: E2E switching the active collection
 **What:** Add an e2e of switching between collections: only the chosen collection's files are shown, no selection carries over, and nothing is scanned.
