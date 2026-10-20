@@ -60,7 +60,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-3, FR-4 (full text present), FR-5, FR-11 (folders never give a path or an enabled button) and the path-display and disabled-state parts of FR-16. The module follows the dual-use pattern of `src/shared/tree-model.js` (loaded as a global in the renderer, `require`d by Vitest); read that file's export block and copy it. The wrapping and selectability (visual half of FR-4) are CSS and are checked in Task 9.
 **POS:** task_ce47f155
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 6: Select a file by clicking its row
 **What:** Add selection state to `tree-view.js`: clicking a file row selects it, the selected row shows a selected state, exactly one file is selected, and a `file-selected` event announces the selection.
