@@ -36,7 +36,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-8 (the pure-string half: whole segments, trailing slash, case) and FR-9 (the same logic is reused by `tree-model.js` in Task 11). Follow the export block of `src/shared/tree-model.js`. POSIX separators only (macOS first); document that in the header. No `path`, `fs` or `realpath` here: symlinks are Task 3 (main process) and Task 10 (derived `resolvedPath`).
 **POS:** task_5d796af2
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 3: Overlap detection module
 **What:** Add `src/main/collections/overlap.js` exporting `findOverlaps(candidatePath, existingPaths, { realpath })` and `describeOverlap(result, candidatePath)`, which classify a folder being added against a collection's folders and produce the confirmation wording.
