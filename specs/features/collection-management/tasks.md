@@ -56,7 +56,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-12 (main-process half, rescan side) and FR-13 (in-flight refusals). Replaces the private `inFlight` Set in `rescan.js`; keep `RESCAN_IN_PROGRESS` for rescan versus rescan and update the header comment. Edits `main.js` (also edited by Task 12) and `rescan.js`. The collection service receives the same guard in Tasks 6 to 8; `main.js` passes it to the service in Task 12.
 **POS:** task_8124a388
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 5: Main-process confirmer
 **What:** Add `src/main/confirm.js` exporting `createConfirmer({ dialog, getWindow })`, returning `confirm({ title, message, detail, confirmLabel })` that resolves true only when the user chooses the confirm button.

@@ -9,6 +9,7 @@ const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tre
 const { openStorage } = require('../../src/main/storage/index.js');
 const { createCollectionService } = require('../../src/main/collections/service.js');
 const { createRescanService } = require('../../src/main/collections/rescan.js');
+const { createInFlightGuard } = require('../../src/main/collections/in-flight.js');
 const { runScan } = require('../../src/main/discovery/run-scan.js');
 const readonly = require('../../tools/readonly-check/index.js');
 
@@ -220,6 +221,51 @@ describe('concurrent rescans (FR-20)', () => {
     const again = await rescan.rescanCollection(id);
     expect(again.summary.rescanned.length).toBe(1);
     expect(calls.length).toBe(2);
+  });
+
+  it('rejects with COLLECTION_BUSY, running no discovery, when the guard is held by add-folder', async () => {
+    const created = await create([folderWith('held-')]);
+    const id = created.collection.id;
+    const guard = createInFlightGuard();
+    const release = guard.acquire(id, 'add-folder');
+    const calls = [];
+    const scan = async (p) => { calls.push(p); return runScan(p); };
+    const rescan = createRescanService({ storage, scan, guard });
+
+    const err = await rescan.rescanCollection(id).catch((e) => e);
+    expect(err.code).toBe('COLLECTION_BUSY');
+    expect(err.message).toContain('add-folder');
+    expect(calls.length).toBe(0);
+    release();
+    expect((await rescan.rescanCollection(id)).summary.rescanned.length).toBe(1);
+  });
+
+  it('holds the guard as kind rescan and releases it after success and after a failing scan', async () => {
+    const created = await create([folderWith('rel-')]);
+    const id = created.collection.id;
+    const guard = createInFlightGuard();
+    const gate = deferred();
+    let fail = false;
+    const scan = async (p) => {
+      await gate.promise;
+      if (fail) throw new Error('boom');
+      return runScan(p);
+    };
+    const rescan = createRescanService({ storage, scan, guard });
+    const pending = rescan.rescanCollection(id);
+    await vi.waitFor(() => expect(guard.holder(id)).toBe('rescan'));
+    gate.resolve();
+    await pending;
+    expect(guard.isBusy(id)).toBe(false);
+
+    // A scan failure is reported as an unavailable folder; also cover a throwing storage.
+    fail = true;
+    await rescan.rescanCollection(id);
+    expect(guard.isBusy(id)).toBe(false);
+    const broken = { ...storage, listFolders: () => { throw new Error('storage down'); } };
+    const failing = createRescanService({ storage: broken, scan, guard });
+    await expect(failing.rescanCollection(id)).rejects.toThrow('storage down');
+    expect(guard.isBusy(id)).toBe(false);
   });
 
   it('does not block a rescan of a different collection', async () => {
