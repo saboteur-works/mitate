@@ -230,6 +230,23 @@ describe('collection list payload (summaries only)', () => {
   });
 });
 
+describe('summary folder order', () => {
+  it('lists folders in folderIds order, as the view does, with unlisted ones last by id', async () => {
+    const dirs = ['a', 'b', 'c'].map((n) => path.join(work, n));
+    for (const d of dirs) fs.mkdirSync(d);
+    const s = service();
+    const { collection, folders } = await s.createCollection('ordered', dirs);
+    const storage = openStorage({ location: { file: storageFile } });
+    // Reverse the list and drop the first folder from it (a stale folderIds).
+    storage.putCollection({ ...collection, folderIds: [folders[2].id, folders[1].id] });
+    const reread = createCollectionService({ storage: openStorage({ location: { file: storageFile } }), scan: throwingScan });
+    const [summary] = await reread.listCollectionSummaries();
+    const fromView = reread.getCollectionView(collection.id).folders.map((f) => f.id);
+    expect(summary.folders.map((f) => f.id)).toEqual(fromView);
+    expect(fromView).toEqual([folders[2].id, folders[1].id, folders[0].id]);
+  });
+});
+
 describe('collection view from per-folder lookups', () => {
   it('returns every folder file in folder order, then index order', async () => {
     const rec = (dir, name) => ({

@@ -2,7 +2,8 @@
 
 /*
  * Management panel for the selected collection (FR-1: rename, FR-3: folder list and
- * Remove folder, no confirmation). Removing a folder of the shown collection refreshes the tree
+ * Remove folder, no confirmation; FR-7: Add folder through the folder picker, one collections:addFolder
+ * call per picked folder, in pick order, the collection marked busy meanwhile). Removing a folder of the shown collection refreshes the tree
  * in place with TreeView.update (the selection survives only if its node still exists). It manages the
  * collection that 'collection-selected' last announced and hides itself when
  * the announcement carries collectionId null. After a successful action it
@@ -15,6 +16,7 @@
   const panel = document.querySelector('[data-testid="manage-panel"]');
   const renameInput = document.querySelector('[data-testid="rename-input"]');
   const renameButton = document.querySelector('[data-testid="rename-button"]');
+  const addButton = document.querySelector('[data-testid="add-folder-button"]');
   const errorBox = document.querySelector('[data-testid="manage-error"]');
   const folderList = document.querySelector('[data-testid="manage-folders"]');
 
@@ -22,6 +24,7 @@
   let loadToken = 0;
   let renaming = false;
   let removing = false;
+  let adding = false;
 
   function showError(message) {
     errorBox.textContent = message;
@@ -33,6 +36,7 @@
     panel.hidden = !active;
     renameInput.disabled = !active || renaming;
     renameButton.disabled = !active || renaming;
+    addButton.disabled = !active || adding;
     for (const button of folderList.querySelectorAll('button')) button.disabled = !active || removing;
   }
 
@@ -91,15 +95,57 @@
     try {
       const result = await api.removeFolder(collectionId, folderId);
       if (!result.ok) return showError(result.error);
-      if (managedId === collectionId) {
-        renderFolders(result.view.folders);
-        window.TreeView.update(result.view.folders, result.view.files);
-      }
+      showView(collectionId, result.view);
       document.dispatchEvent(new CustomEvent('collections-changed', { detail: { collectionId } }));
     } catch (err) {
       showError(err && err.message ? err.message : String(err));
     } finally {
       removing = false;
+      sync();
+    }
+  }
+
+  // Shows a view returned by the main process for the collection the panel manages.
+  function showView(collectionId, view) {
+    if (managedId !== collectionId) return;
+    renderFolders(view.folders);
+    window.TreeView.update(view.folders, view.files);
+  }
+
+  // Picks folders, then adds them one by one in pick order; the first failure
+  // stops the rest and is shown. A cancelled overlap confirmation adds nothing
+  // for that folder and is not an error.
+  async function addFolders() {
+    if (managedId === null || adding) return;
+    const collectionId = managedId;
+    showError('');
+    adding = true;
+    sync();
+    let began = false;
+    try {
+      const picked = await api.pickFolders();
+      if (picked.canceled || picked.paths.length === 0) return;
+      began = window.CollectionBusy.begin(collectionId);
+      let changed = false;
+      try {
+        for (const dirPath of picked.paths) {
+          const result = await api.addFolder(collectionId, dirPath);
+          if (!result.ok) {
+            showError(result.error);
+            break;
+          }
+          if (result.canceled) continue;
+          changed = true;
+          showView(collectionId, result.view);
+        }
+      } finally {
+        if (changed) document.dispatchEvent(new CustomEvent('collections-changed', { detail: { collectionId } }));
+      }
+    } catch (err) {
+      showError(err && err.message ? err.message : String(err));
+    } finally {
+      if (began) window.CollectionBusy.end(collectionId);
+      adding = false;
       sync();
     }
   }
@@ -124,6 +170,7 @@
   }
 
   renameButton.addEventListener('click', rename);
+  addButton.addEventListener('click', addFolders);
   renameInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') rename();
   });

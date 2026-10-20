@@ -271,7 +271,7 @@ function createCollectionService({
     const collections = storage.listCollections();
     await refreshAccessibility(collections);
     return collections.map((collection) => {
-      const folders = storage.listFolders(collection.id).map(({ id, path: folderPath, unavailable }) => ({
+      const folders = orderedFolders(collection, storage.listFolders(collection.id)).map(({ id, path: folderPath, unavailable }) => ({
         id,
         path: folderPath,
         unavailable,

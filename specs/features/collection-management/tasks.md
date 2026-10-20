@@ -206,7 +206,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-7 and FR-13. While an add is in flight the panel marks the collection busy through `CollectionBusy.begin/end` (the disabling UI is Task 23). Restore permissions in `afterEach`; run `chmod` fixtures on a copy of the fixture tree (`lockFolder`/`unlockFolder` in `fixture-tree.js`). A cancelled picker (`canceled: true`) adds nothing; `stubFolderPicker` always answers with paths, so that case is covered by the unit tests of the picker handler already in `ipc.test.js`.
 **POS:** task_19797402
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 20: E2E overlap confirmation when adding a folder
 **What:** Add e2e tests for the inside, contains, identical and non-overlap cases of adding a folder, with confirm and cancel.
