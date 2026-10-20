@@ -110,7 +110,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-6 (renderer sends the path of a file the app has indexed), FR-8 (renderer side of the channel), FR-9 (error shown; no rescan button and no parent-folder fallback are added: do not add either). The error text comes from `result.error`, which the main process builds from the message in Task 1 (`File not found: <path>`); the renderer does not rewrite it. Thrown IPC errors (rejected promises) are shown with the same element using the message text.
 **POS:** task_9326d6a9
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 11: E2E reveal flow with the mouse and with the keyboard alone
 **What:** Add an e2e that selects a file and activates Reveal, once by mouse and once keyboard-only, and asserts the stubbed reveal received exactly the selected file's absolute path.

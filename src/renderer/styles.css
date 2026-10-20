@@ -82,3 +82,15 @@
 .file-path-empty {
   color: #6b7280;
 }
+
+.reveal-error {
+  margin: 8px 0 0;
+  color: #b91c1c;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.reveal-error[hidden] {
+  display: none;
+}

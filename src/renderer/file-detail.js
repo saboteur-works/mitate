@@ -6,19 +6,52 @@
  * selected file or null). The shared FileDetail model decides what to show; the
  * path is written with textContent, never innerHTML. Folder clicks dispatch no
  * event, so they leave the area unchanged. The Reveal button is a native
- * button; its click action is not wired here.
+ * button; a click calls window.mediaOrganizer.revealFile(path) once. A returned
+ * { ok: false, error } or a rejected promise is shown in the reveal-error
+ * element (main-process text unchanged); the error is cleared on every
+ * selection change. The button stays disabled while a call is in flight, and a
+ * response that arrives after the selection changed is ignored.
  */
 (function () {
   const pathEl = document.querySelector('[data-testid="file-path"]');
   const reveal = document.querySelector('[data-testid="reveal"]');
 
-  function render(file) {
-    const view = globalThis.FileDetail.describeSelection(file);
-    pathEl.textContent = view.pathText || view.emptyText;
-    pathEl.classList.toggle('file-path-empty', view.pathText === '');
-    reveal.disabled = view.revealDisabled;
+  const errorEl = document.querySelector('[data-testid="reveal-error"]');
+  let current = null;
+  let inFlight = false;
+
+  function setError(text) {
+    errorEl.textContent = text;
+    errorEl.hidden = text === '';
   }
 
+  function render(file) {
+    const view = globalThis.FileDetail.describeSelection(file);
+    current = view.pathText === '' ? null : file;
+    pathEl.textContent = view.pathText || view.emptyText;
+    pathEl.classList.toggle('file-path-empty', view.pathText === '');
+    reveal.disabled = view.revealDisabled || inFlight;
+    setError('');
+  }
+
+  async function onReveal() {
+    if (!current || inFlight) return;
+    const requested = current;
+    inFlight = true;
+    reveal.disabled = true;
+    let message = '';
+    try {
+      const result = await window.mediaOrganizer.revealFile(requested.path);
+      if (result && result.ok === false) message = String(result.error || 'Reveal failed');
+    } catch (err) {
+      message = (err && err.message) || String(err);
+    }
+    inFlight = false;
+    reveal.disabled = current === null;
+    if (current === requested) setError(message);
+  }
+
+  reveal.addEventListener('click', onReveal);
   document.addEventListener('file-selected', (e) => render(e.detail ? e.detail.file : null));
   render(null);
 })();
