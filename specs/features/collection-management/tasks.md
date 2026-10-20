@@ -196,7 +196,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-3 (selection rule, last-folder refusal) and FR-13. Spec-only task, so it can run beside Task 19.
 **POS:** task_9427a724
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 19: Add folder to an existing collection in the UI
 **What:** Add an "Add folder" button to the panel that uses the folder picker, adds each picked folder through `collections:addFolder`, refreshes the tree in place, and shows errors.
