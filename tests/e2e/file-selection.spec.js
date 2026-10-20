@@ -169,9 +169,9 @@ test('the selection survives scrolling the selected row out of and back into the
   }
 });
 
-// Roots <base>/a and <base>/a/b: the file same.jpg of root b and the file b/same.jpg of root a
-// have the same data-path, so only the node id tells them apart.
-test('overlapping roots showing the same path: only the clicked row is selected', async () => {
+// Roots <base>/a and <base>/a/b: root a's index has b/same.jpg, so root b drops same.jpg and the
+// shared file appears once, under the outer root (Feature 3 FR-9; Feature 2 OQ-8).
+test('overlapping roots: the shared file appears once, under the outer root, and selecting it selects one row', async () => {
   const userDataDir = newUserDataDir('select-e2e');
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'mo-select-overlap-'));
   const rootA = path.join(base, 'a');
@@ -194,21 +194,18 @@ test('overlapping roots showing the same path: only the clicked row is selected'
     await byId('f-b:').click();
     const shared = `${rootB}/same.jpg`;
     await expect(byId('f-a:b/same.jpg')).toHaveAttribute('data-path', shared);
-    await expect(byId('f-b:same.jpg')).toHaveAttribute('data-path', shared);
-
-    await byId('f-b:same.jpg').click();
-    await expect(byId('f-b:same.jpg')).toHaveAttribute('aria-selected', 'true');
-    await expect(byId('f-a:b/same.jpg')).not.toHaveAttribute('aria-selected', 'true');
-    await expect(selectedRows(window)).toHaveCount(1);
+    // The inner root is still shown, but the outer root owns the shared file (FR-9).
+    await expect(byId('f-b:')).toHaveCount(1);
+    await expect(byId('f-b:same.jpg')).toHaveCount(0);
+    await expect(window.locator(`[data-testid="tree-row"][data-path="${shared}"]`)).toHaveCount(1);
 
     await byId('f-a:b/same.jpg').click();
     await expect(byId('f-a:b/same.jpg')).toHaveAttribute('aria-selected', 'true');
-    await expect(byId('f-b:same.jpg')).not.toHaveAttribute('aria-selected', 'true');
     await expect(selectedRows(window)).toHaveCount(1);
 
     const seen = await events(window);
-    expect(seen.map((d) => d.file.nodeId)).toEqual(['f-b:same.jpg', 'f-a:b/same.jpg']);
-    expect(seen.every((d) => d.file.path === shared)).toBe(true);
+    expect(seen.map((d) => d.file.nodeId)).toEqual(['f-a:b/same.jpg']);
+    expect(seen[0].file.path).toBe(shared);
   } finally {
     if (session) await session.app.close();
     fs.rmSync(base, { recursive: true, force: true });

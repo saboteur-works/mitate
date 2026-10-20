@@ -1,5 +1,10 @@
 'use strict';
 
+// pathCompare: require under Node/Vitest, global in the renderer (loaded by a
+// script tag before this file).
+const pathCompare =
+  typeof module !== 'undefined' && module.exports ? require('./path-compare.js') : globalThis.PathCompare;
+
 /*
  * Tree model (FR-11, structure and order).
  *
@@ -63,6 +68,18 @@
  * A.jpg, or f2 and f02) are broken
  * deterministically by comparing the raw names by UTF-16 code unit, then paths.
  * Root nodes are ordered by the same comparison.
+ *
+ * De-duplication (FR-9, FR-13): within one collection a file is shown once. A
+ * root has "owners": every root whose path strictly contains it, and every
+ * root with the identical path that comes EARLIER in the folderRecords order
+ * (the input order is the tie-break). Paths compared are `resolvedPath ||
+ * path` using PathCompare (whole segments, case-insensitive). A root drops a
+ * file only when an owner has a file record whose absolute path (owner path +
+ * relativePath) is the same. If no owner has a record (stale owner index) the
+ * inner root keeps the file. Roots themselves are never dropped, so an inner
+ * root may end up with children: []. An unavailable owner still owns. Cost:
+ * one Set of normalised file paths per owning root; each file is one lookup
+ * per owner of its root.
  *
  * Exports: buildTree(folderRecords, fileRecords) -> Node[] (root nodes),
  * flattenVisible(tree, expandedSet) -> { node, depth }[], compareNames(a, b).
@@ -150,20 +167,70 @@ function addFile(root, rec, byRel) {
   return true;
 }
 
+function effectivePath(f) {
+  return f.resolvedPath || f.path;
+}
+
+// Case-folded absolute key of a file under a root, or null for an unusable path.
+function fileKey(rootPath, rec) {
+  const rel = String(rec.relativePath || rec.name || '');
+  const abs = pathCompare.normalize(String(rootPath) + '/' + rel);
+  return abs === null ? null : abs.toLowerCase();
+}
+
+// Indexes (into the entries array) of the roots that own entries[i].
+function ownersOf(entries, i) {
+  const owners = [];
+  for (let j = 0; j < entries.length; j++) {
+    if (j === i) continue;
+    const a = entries[j].effPath;
+    const b = entries[i].effPath;
+    if (pathCompare.contains(a, b) || (j < i && pathCompare.isSame(a, b))) owners.push(j);
+  }
+  return owners;
+}
+
 function buildTree(folderRecords, fileRecords) {
-  const roots = new Map();
+  const entries = [];
+  const byId = new Map();
   for (const f of folderRecords || []) {
+    if (byId.has(f.id)) continue;
     const root = makeFolder(f.id, baseName(f.path), f.path, '', f.unavailable === true);
-    roots.set(f.id, { root, byRel: new Map() });
+    const entry = { root, byRel: new Map(), effPath: effectivePath(f), files: [], owners: [], keys: null };
+    byId.set(f.id, entry);
+    entries.push(entry);
   }
   for (const rec of fileRecords || []) {
-    const entry = roots.get(rec.folderId);
-    if (entry) addFile(entry.root, rec, entry.byRel);
+    const entry = byId.get(rec.folderId);
+    if (entry) entry.files.push(rec);
+  }
+  entries.forEach((e, i) => {
+    e.owners = ownersOf(entries, i);
+  });
+  // Key sets are built only for roots that own another root.
+  for (const e of entries) {
+    for (const j of e.owners) {
+      const owner = entries[j];
+      if (owner.keys === null) {
+        owner.keys = new Set();
+        for (const rec of owner.files) {
+          const k = fileKey(owner.effPath, rec);
+          if (k !== null) owner.keys.add(k);
+        }
+      }
+    }
   }
   const result = [];
-  for (const { root } of roots.values()) {
-    sortChildren(root);
-    result.push(root);
+  for (const e of entries) {
+    for (const rec of e.files) {
+      if (e.owners.length > 0) {
+        const k = fileKey(e.effPath, rec);
+        if (k !== null && e.owners.some((j) => entries[j].keys.has(k))) continue;
+      }
+      addFile(e.root, rec, e.byRel);
+    }
+    sortChildren(e.root);
+    result.push(e.root);
   }
   result.sort(compareNodes);
   return result;

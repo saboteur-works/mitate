@@ -12,67 +12,71 @@
 // the original case. A non-string, empty or relative path normalises to null,
 // and every comparison involving null answers false.
 
-function segmentsOf(p) {
-  if (typeof p !== 'string' || p.charAt(0) !== '/') return null;
-  const out = [];
-  for (const seg of p.split('/')) {
-    if (seg === '' || seg === '.') continue;
-    if (seg === '..') {
-      out.pop();
-      continue;
+// The body is wrapped so a classic <script> load leaks only `PathCompare`
+// (a top-level declaration would collide with other renderer scripts).
+(function () {
+  function segmentsOf(p) {
+    if (typeof p !== 'string' || p.charAt(0) !== '/') return null;
+    const out = [];
+    for (const seg of p.split('/')) {
+      if (seg === '' || seg === '.') continue;
+      if (seg === '..') {
+        out.pop();
+        continue;
+      }
+      out.push(seg);
     }
-    out.push(seg);
+    return out;
   }
-  return out;
-}
 
-function normalize(p) {
-  const segs = segmentsOf(p);
-  return segs === null ? null : '/' + segs.join('/');
-}
-
-function keyOf(p) {
-  const segs = segmentsOf(p);
-  return segs === null ? null : segs.map((s) => s.toLowerCase());
-}
-
-function isPrefix(shorter, longer) {
-  for (let i = 0; i < shorter.length; i++) {
-    if (shorter[i] !== longer[i]) return false;
+  function normalize(p) {
+    const segs = segmentsOf(p);
+    return segs === null ? null : '/' + segs.join('/');
   }
-  return true;
-}
 
-// Same path (after normalisation and case folding).
-function isSame(a, b) {
-  const ka = keyOf(a);
-  const kb = keyOf(b);
-  if (ka === null || kb === null) return false;
-  return ka.length === kb.length && isPrefix(ka, kb);
-}
+  function keyOf(p) {
+    const segs = segmentsOf(p);
+    return segs === null ? null : segs.map((s) => s.toLowerCase());
+  }
 
-// True when `child` is strictly inside `parent`. Identical paths are not inside.
-function isInside(child, parent) {
-  const kc = keyOf(child);
-  const kp = keyOf(parent);
-  if (kc === null || kp === null) return false;
-  return kc.length > kp.length && isPrefix(kp, kc);
-}
+  function isPrefix(shorter, longer) {
+    for (let i = 0; i < shorter.length; i++) {
+      if (shorter[i] !== longer[i]) return false;
+    }
+    return true;
+  }
 
-// True when `parent` strictly contains `child`.
-function contains(parent, child) {
-  return isInside(child, parent);
-}
+  // Same path (after normalisation and case folding).
+  function isSame(a, b) {
+    const ka = keyOf(a);
+    const kb = keyOf(b);
+    if (ka === null || kb === null) return false;
+    return ka.length === kb.length && isPrefix(ka, kb);
+  }
 
-// { same, inside, contains } describing how `a` relates to `b`.
-function compare(a, b) {
-  return { same: isSame(a, b), inside: isInside(a, b), contains: contains(a, b) };
-}
+  // True when `child` is strictly inside `parent`. Identical paths are not inside.
+  function isInside(child, parent) {
+    const kc = keyOf(child);
+    const kp = keyOf(parent);
+    if (kc === null || kp === null) return false;
+    return kc.length > kp.length && isPrefix(kp, kc);
+  }
 
-const PathCompare = { normalize, isSame, isInside, contains, compare };
+  // True when `parent` strictly contains `child`.
+  function contains(parent, child) {
+    return isInside(child, parent);
+  }
 
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = PathCompare;
-} else {
-  globalThis.PathCompare = PathCompare;
-}
+  // { same, inside, contains } describing how `a` relates to `b`.
+  function compare(a, b) {
+    return { same: isSame(a, b), inside: isInside(a, b), contains: contains(a, b) };
+  }
+
+  const PathCompare = { normalize, isSame, isInside, contains, compare };
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = PathCompare;
+  } else {
+    globalThis.PathCompare = PathCompare;
+  }
+})();

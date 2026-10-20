@@ -126,7 +126,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-9 and FR-13 (one-appearance rule, identical-path tie-break). Input order of `folderRecords` is the tie-break order (Task 10 supplies it). Load `../shared/path-compare.js` in `index.html` before `tree-model.js`; in `tree-model.js` take `PathCompare` from `require('./path-compare.js')` under Node and from `globalThis.PathCompare` in the renderer. Build per-root sets of normalised file paths so the check is a set lookup, not a scan. The stale-owner choice is recorded in the design decisions above. Edits `index.html` (also edited by Tasks 15, 16, 17, 19, 21).
 **POS:** task_53b3b91e
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 12: IPC channels, preload and main wiring for management
 **What:** Add the rename, delete, add-folder and remove-folder channels to `ipc.js`, mirror them in `preload.js`, make `collections:create` pass through a cancel, and wire the confirmer and shared guard in `main.js`.
