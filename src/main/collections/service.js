@@ -19,6 +19,9 @@
  *                                          (no file records; index not read)
  *   getCollectionView(collectionId)     -> {collection, folders, files} | null
  *                                          (files read per folder, in folder order)
+ *   findIndexedFile(filePath)           -> stored file record | null
+ *                                          (record whose path equals filePath exactly;
+ *                                          no normalization, no file system access)
  *   collectionView(storage, collectionId)  (exported) the pure function behind
  *                                          getCollectionView; rescan.js uses it too
  *
@@ -187,7 +190,13 @@ function createCollectionService({ storage, scan = defaultScan, idGenerator = cr
     return collectionView(storage, collectionId);
   }
 
-  return { createCollection, loadCollections, listCollectionSummaries, getCollectionView };
+  // The stored record whose path equals filePath exactly, or null. Reads the
+  // index only: no path normalization and no file system access.
+  function findIndexedFile(filePath) {
+    return storage.getIndex().find((record) => record.path === filePath) || null;
+  }
+
+  return { createCollection, loadCollections, listCollectionSummaries, getCollectionView, findIndexedFile };
 }
 
 module.exports = { createCollectionService, collectionView };

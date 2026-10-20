@@ -30,7 +30,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-6 (the index membership half), FR-10 (unavailable files are still found). Implementation hint: `storage.getIndex()` with no filter returns every stored record (`src/main/storage/index.js`); compare `record.path === filePath`. Do not use `path.resolve` or normalization on the input: the check is for exact stored paths, so a path that only resolves to an indexed file is rejected.
 **POS:** task_e9e4f649
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 3: `files:reveal` channel, preload method and main wiring
 **What:** Add the `revealFile` channel to `CHANNELS` and `registerIpc` (through `guard`, rejecting any path not in the index), mirror it in `window.mediaOrganizer`, and wire the real revealer in `main.js`.
