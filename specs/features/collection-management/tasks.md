@@ -96,7 +96,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 5
 **Notes:** Covers FR-6, FR-7, FR-8, FR-11, FR-12, FR-4 (`folderIds` append) and FR-13. Refactor the existing private `validate` so creation and add share the absolute/readable/storage-file checks (keep creation behaviour and messages). Order: busy check, validation, overlap check, confirm, then acquire-and-scan; confirm happens before any scan, so a cancel costs nothing. Hold the guard from before the confirmation so a rescan cannot start while the dialog is open.
 **POS:** task_fd3b4b30
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 9: Overlap confirmation at collection creation
 **What:** Make `createCollection` ask for confirmation when the picked folders overlap each other, and return `{ canceled: true }` without writing when the user cancels.

@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * Collection service (FR-1, FR-2, FR-3, FR-4, FR-11, FR-12, FR-13). Main-process logic with
+ * Collection service (FR-1, FR-2, FR-3, FR-4, FR-6, FR-7, FR-8, FR-11, FR-12, FR-13). Main-process logic with
  * no Electron imports: the storage instance and the scan function are injected
  * so it can be unit-tested and wired by IPC.
  *
@@ -14,7 +14,7 @@
  *                  Pass the guard shared with the rescan service so the two
  *                  exclude each other.
  *     confirm:     async (request) -> boolean; default none (no confirmation
- *                  is ever granted); used by deleteCollection.
+ *                  is ever granted); used by deleteCollection and addFolder.
  *
  *   createCollection(name, directories) -> Promise<{collection, folders, files}>
  *   loadCollections()                   -> Promise<Array<{collection, folders, files}>>
@@ -26,6 +26,11 @@
  *                                          (files read per folder, in folder order)
  *   renameCollection(id, name)          -> Promise<{collection, folders, files}>
  *                                          (name trimmed; duplicates and any length accepted)
+ *   addFolder(collectionId, dirPath)    -> Promise<{collection, folders, files} | {canceled: true}>
+ *                                          (guard kind 'add-folder', held across validation,
+ *                                          confirmation and the scan of the new folder only;
+ *                                          overlap with the collection's folders needs
+ *                                          confirm === true; one storage.transaction)
  *   removeFolder(collectionId, folderId) -> Promise<{collection, folders, files}>
  *                                          (the refreshed view; rejects with code
  *                                          'LAST_FOLDER' for the only folder)
@@ -77,6 +82,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createInFlightGuard } = require('./in-flight.js');
+const { findOverlaps, describeOverlap } = require('./overlap.js');
 const { defaultScan, checkReadableDirectory, isReadableDirectory, scanFolder } = require('./folder-access.js');
 
 async function assertDirectory(dir) {
@@ -143,6 +149,13 @@ function createCollectionService({
     if (!Array.isArray(directories) || directories.length === 0) {
       throw new Error('At least one folder is required');
     }
+    return { name: name.trim(), dirs: await validateDirectories(directories) };
+  }
+
+  // The checks creation and add share: each path absolute, a readable
+  // directory, and not containing the storage file. Returns the resolved,
+  // de-duplicated paths.
+  async function validateDirectories(directories) {
     const unique = [];
     for (const dir of directories) {
       await assertDirectory(dir);
@@ -155,7 +168,7 @@ function createCollectionService({
         throw new Error(`Folder contains the app storage location, which must be outside collection folders: ${dir}`);
       }
     }
-    return { name: name.trim(), dirs: unique };
+    return unique;
   }
 
   async function createCollection(name, directories) {
@@ -288,7 +301,39 @@ function createCollectionService({
     });
   }
 
-  return { createCollection, renameCollection, removeFolder, deleteCollection, loadCollections, listCollectionSummaries, getCollectionView, findIndexedFile };
+  // FR-6 / FR-7 / FR-8: adds one folder to a collection. The guard is held from
+  // before the validation, across the confirmation and the scan of the new
+  // folder only. Overlap with the collection's existing folders needs
+  // confirm === true; otherwise nothing is scanned or stored.
+  async function addFolder(collectionId, dirPath) {
+    return withGuard(collectionId, 'add-folder', async () => {
+      const collection = requireCollection(collectionId);
+      const [dir] = await validateDirectories([dirPath]);
+      const existing = storage.listFolders(collectionId).map((f) => f.path);
+      const line = describeOverlap(findOverlaps(dir, existing), dir);
+      if (line) {
+        const confirmed = typeof confirm === 'function' && (await confirm({
+          title: 'Add folder',
+          message: `Add this folder to "${collection.name}"?`,
+          detail: `${line} Files already indexed in the collection may be listed more than once. `
+            + 'No files on disk are touched, deleted or moved.',
+          confirmLabel: 'Add folder',
+        }));
+        if (confirmed !== true) return { canceled: true };
+      }
+      const scanned = await scanFolder(scan, dir);
+      const folderId = idGenerator();
+      const folderIds = [...(collection.folderIds || []).filter((id) => id !== folderId), folderId];
+      storage.transaction(() => {
+        storage.putFolder({ id: folderId, collectionId, path: dir, unavailable: scanned.unavailable });
+        storage.replaceFolderIndex(folderId, scanned.records);
+        storage.putCollection({ ...collection, folderIds });
+      });
+      return collectionView(storage, collectionId);
+    });
+  }
+
+  return { createCollection, addFolder, renameCollection, removeFolder, deleteCollection, loadCollections, listCollectionSummaries, getCollectionView, findIndexedFile };
 }
 
 module.exports = { createCollectionService, collectionView };
