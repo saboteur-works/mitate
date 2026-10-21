@@ -8,6 +8,7 @@
   const folderList = document.querySelector('[data-testid="folder-list"]');
   const collectionList = document.querySelector('[data-testid="collection-list"]');
   const errorBox = document.querySelector('[data-testid="create-error"]');
+  const noticeBox = document.querySelector('[data-testid="create-notice"]');
 
   let folders = [];
 
@@ -16,6 +17,12 @@
   function showError(message) {
     errorBox.textContent = message;
     errorBox.hidden = !message;
+  }
+
+  // FR-8: tells which nested picks were left out of the created collection.
+  function showNotice(message) {
+    noticeBox.textContent = message;
+    noticeBox.hidden = !message;
   }
 
   function renderFolders() {
@@ -80,6 +87,7 @@
 
   addButton.addEventListener('click', async () => {
     showError('');
+    showNotice('');
     const result = await api.pickFolders();
     if (result.canceled) return;
     for (const p of result.paths) if (!folders.includes(p)) folders.push(p);
@@ -93,18 +101,24 @@
   createButton.addEventListener('click', async () => {
     if (creating) return;
     showError('');
+    showNotice('');
     if (nameInput.value.trim() === '') return showError('Collection name must not be empty');
     creating = true;
     createButton.disabled = true;
     try {
       const result = await api.createCollection(nameInput.value, folders);
       if (!result.ok) return showError(result.error);
-      // The user declined the overlap confirmation: nothing was created, keep the form as it was.
+      // A cancel pass-through: nothing was created, keep the form as it was.
       if (result.canceled) return;
+      const dropped = Array.isArray(result.dropped) ? result.dropped : [];
       folders = [];
       nameInput.value = '';
       renderFolders();
       await refreshCollections();
+      if (dropped.length > 0) {
+        const lines = dropped.map((d) => `${d.path} (covered by ${d.coveredBy})`);
+        showNotice(`Left out because another picked folder already covers ${dropped.length === 1 ? 'it' : 'them'}: ${lines.join('; ')}.`);
+      }
     } catch (err) {
       showError(messageOf(err));
     } finally {

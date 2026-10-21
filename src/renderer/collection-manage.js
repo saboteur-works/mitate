@@ -9,7 +9,8 @@
  * collection that 'collection-selected' last announced and hides itself when
  * the announcement carries collectionId null. After a successful action it
  * dispatches 'collections-changed' on document (detail.collectionId) so the
- * collection list can refresh. The main process validates the name; this file
+ * collection list can refresh. A refused add (FOLDER_COVERED) is shown in manage-error; a confirmed
+ * add that replaced contained folders is reported in manage-notice (FR-8). The main process validates the name; this file
  * only shows what it answers.
  */
 (function () {
@@ -20,6 +21,7 @@
   const addButton = document.querySelector('[data-testid="add-folder-button"]');
   const deleteButton = document.querySelector('[data-testid="delete-collection-button"]');
   const errorBox = document.querySelector('[data-testid="manage-error"]');
+  const noticeBox = document.querySelector('[data-testid="manage-notice"]');
   const folderList = document.querySelector('[data-testid="manage-folders"]');
 
   let managedId = null;
@@ -32,6 +34,12 @@
   function showError(message) {
     errorBox.textContent = message;
     errorBox.hidden = !message;
+  }
+
+  // FR-8: tells which folders a confirmed add replaced. Cleared by the next action in the panel.
+  function showNotice(message) {
+    noticeBox.textContent = message;
+    noticeBox.hidden = !message;
   }
 
   // FR-12: true while a rescan or add-folder scan of the managed collection runs. The main
@@ -83,6 +91,7 @@
     const token = ++loadToken;
     managedId = collectionId;
     showError('');
+    showNotice('');
     renameInput.value = '';
     renderFolders([]);
     if (collectionId === null) return;
@@ -99,6 +108,7 @@
     if (managedId === null || removing || isBusy()) return;
     const collectionId = managedId;
     showError('');
+    showNotice('');
     removing = true;
     sync();
     try {
@@ -122,12 +132,15 @@
   }
 
   // Picks folders, then adds them one by one in pick order; the first failure
-  // stops the rest and is shown. A cancelled overlap confirmation adds nothing
-  // for that folder and is not an error.
+  // (a FOLDER_COVERED refusal included) stops the rest and is shown, and the folders added
+  // before it stay. A cancelled replace confirmation adds nothing for that folder and is not
+  // an error. A confirmed replace lists the removed folders in the notice (result.replaced,
+  // missing when the main process sent none).
   async function addFolders() {
     if (managedId === null || adding || isBusy()) return;
     const collectionId = managedId;
     showError('');
+    showNotice('');
     adding = true;
     sync();
     let began = false;
@@ -136,6 +149,7 @@
       if (picked.canceled || picked.paths.length === 0) return;
       began = window.CollectionBusy.begin(collectionId);
       let changed = false;
+      const notices = [];
       try {
         for (const dirPath of picked.paths) {
           const result = await api.addFolder(collectionId, dirPath);
@@ -146,8 +160,11 @@
           if (result.canceled) continue;
           changed = true;
           showView(collectionId, result.view);
+          const replaced = Array.isArray(result.replaced) ? result.replaced : [];
+          if (replaced.length > 0) notices.push(`${dirPath} replaced ${replaced.join(', ')}.`);
         }
       } finally {
+        showNotice(notices.join(' '));
         if (changed) document.dispatchEvent(new CustomEvent('collections-changed', { detail: { collectionId } }));
       }
     } catch (err) {
@@ -163,6 +180,7 @@
     if (managedId === null || renaming || isBusy()) return;
     const collectionId = managedId;
     showError('');
+    showNotice('');
     renaming = true;
     sync();
     try {
@@ -185,6 +203,7 @@
     if (managedId === null || deleting || isBusy()) return;
     const collectionId = managedId;
     showError('');
+    showNotice('');
     deleting = true;
     sync();
     try {

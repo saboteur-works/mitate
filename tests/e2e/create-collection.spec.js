@@ -104,3 +104,57 @@ test('creates a collection from picked folders; picker is directory-only; empty 
     fs.rmSync(userDataDir, { recursive: true, force: true });
   }
 });
+
+test('a nested pick is dropped with a notice naming it and its cover; the notice clears on the next pick or Create', async () => {
+  const userDataDir = newUserDataDir('e2e');
+  const tree = buildFixtureTree();
+  const other = buildFixtureTree();
+  const inner = `${tree.root}/Photos`;
+  const { app, window } = await launchApp(userDataDir);
+  try {
+    const byId = (id) => window.getByTestId(id);
+    await stubFolderPicker(app, [tree.root, inner]);
+    await byId('add-folder').click();
+    await byId('collection-name').fill('Nested');
+    await expect(byId('folder-item')).toHaveCount(2);
+    await expect(byId('create-notice')).toBeHidden();
+
+    await byId('create-collection').click();
+    await expect(byId('collection-item')).toHaveCount(1, { timeout: 30000 });
+    await expect(byId('collection-folder-count')).toHaveText('1');
+    await expect(byId('create-notice')).toBeVisible();
+    await expect(byId('create-notice')).toHaveAttribute('role', 'status');
+    await expect(byId('create-notice')).toContainText(inner);
+    await expect(byId('create-notice')).toContainText(tree.root);
+    await expect(byId('create-error')).toBeHidden();
+    await expect(byId('folder-item')).toHaveCount(0);
+    await expect(byId('collection-name')).toHaveValue('');
+
+    // Picking another folder clears the notice.
+    await stubFolderPicker(app, [other.root]);
+    await byId('add-folder').click();
+    await expect(byId('folder-item')).toHaveCount(1);
+    await expect(byId('create-notice')).toBeHidden();
+
+    // Unrelated folders create with no notice.
+    await byId('collection-name').fill('Unrelated');
+    await byId('create-collection').click();
+    await expect(byId('collection-item')).toHaveCount(2, { timeout: 30000 });
+    await expect(byId('create-notice')).toBeHidden();
+
+    // Creating again clears an earlier notice.
+    await stubFolderPicker(app, [tree.root, inner]);
+    await byId('add-folder').click();
+    await byId('collection-name').fill('Nested again');
+    await byId('create-collection').click();
+    await expect(byId('create-notice')).toBeVisible({ timeout: 30000 });
+    await byId('create-collection').click();
+    await expect(byId('create-error')).toBeVisible();
+    await expect(byId('create-notice')).toBeHidden();
+  } finally {
+    await app.close();
+    cleanupFixtureTree(tree.root);
+    cleanupFixtureTree(other.root);
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  }
+});

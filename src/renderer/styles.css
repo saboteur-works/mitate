@@ -103,7 +103,18 @@
   -webkit-user-select: text;
 }
 
+.manage-notice,
+.create-notice {
+  margin: 8px 0 0;
+  color: #374151;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 .manage-error[hidden],
+.manage-notice[hidden],
+.create-notice[hidden],
 [data-testid="manage-panel"][hidden] {
   display: none;
 }

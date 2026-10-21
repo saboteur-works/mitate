@@ -173,3 +173,107 @@ test('a folder that cannot be opened for listing is refused with an error naming
     fs.rmSync(userDataDir, { recursive: true, force: true });
   }
 });
+
+test('a confirmed replace shows manage-notice naming the replaced folder; the next action clears it', async () => {
+  const userDataDir = newUserDataDir('folder-add-replace-notice-e2e');
+  const fx = buildFixtureTree();
+  const inner = `${fx.root}/Photos`;
+  let session;
+  try {
+    const collectionId = await createCollection(userDataDir, 'Replace', [inner]);
+
+    session = await launchApp(userDataDir);
+    const { app, window } = session;
+    await selectOnlyCollection(window);
+    await expect(window.getByTestId('manage-notice')).toBeHidden();
+
+    await stubFolderPicker(app, [fx.root]);
+    await stubConfirm(app, [true]);
+    await window.getByTestId('add-folder-button').click();
+
+    await expect(window.getByTestId('manage-notice')).toBeVisible({ timeout: 30000 });
+    await expect(window.getByTestId('manage-notice')).toContainText(inner);
+    await expect(window.getByTestId('manage-notice')).toHaveAttribute('role', 'status');
+    await expect(window.getByTestId('manage-folder-path')).toHaveText([fx.root]);
+    await expect(rowAt(window, fx.root)).toBeVisible();
+    await expect(rowAt(window, inner)).toHaveCount(0);
+    await expect(window.getByTestId('manage-error')).toBeHidden();
+    expect(await confirmCalls(app)).toHaveLength(1);
+
+    // The next action in the panel clears the notice.
+    await window.getByTestId('rename-button').click();
+    await expect(window.getByTestId('manage-notice')).toBeHidden();
+
+    await app.close();
+    expect(storedPaths(userDataDir, collectionId)).toEqual([fx.root]);
+  } finally {
+    if (session) await session.app.close().catch(() => {});
+    cleanupFixtureTree(fx.root);
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  }
+});
+
+test('a subfolder of an existing folder is refused with "already covered"; nothing changes and nothing is asked', async () => {
+  const userDataDir = newUserDataDir('folder-add-refused-e2e');
+  const fx = buildFixtureTree();
+  let session;
+  try {
+    const collectionId = await createCollection(userDataDir, 'Refuse', [fx.root]);
+
+    session = await launchApp(userDataDir);
+    const { app, window } = session;
+    await selectOnlyCollection(window);
+    const rowsBefore = await window.getByTestId('tree-row').count();
+
+    await stubFolderPicker(app, [`${fx.root}/Photos`]);
+    await stubConfirm(app, [true]);
+    await window.getByTestId('add-folder-button').click();
+
+    const error = window.getByTestId('manage-error');
+    await expect(error).toBeVisible({ timeout: 30000 });
+    await expect(error).toHaveAttribute('role', 'alert');
+    await expect(error).toContainText('already covered');
+    await expect(error).toContainText(fx.root);
+    await expect(window.getByTestId('manage-notice')).toBeHidden();
+    await expect(window.getByTestId('manage-folder-path')).toHaveText([fx.root]);
+    await expect(window.getByTestId('tree-row')).toHaveCount(rowsBefore);
+    expect(await confirmCalls(app)).toEqual([]);
+
+    await app.close();
+    expect(storedPaths(userDataDir, collectionId)).toEqual([fx.root]);
+  } finally {
+    if (session) await session.app.close().catch(() => {});
+    cleanupFixtureTree(fx.root);
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  }
+});
+
+test('when one pick of three is refused the rest are not added and the earlier pick stays', async () => {
+  const userDataDir = newUserDataDir('folder-add-refused-multi-e2e');
+  const first = buildFixtureTree();
+  const second = buildFixtureTree();
+  const third = buildFixtureTree();
+  let session;
+  try {
+    const collectionId = await createCollection(userDataDir, 'Stop', [first.root]);
+
+    session = await launchApp(userDataDir);
+    const { app, window } = session;
+    await selectOnlyCollection(window);
+
+    await stubFolderPicker(app, [second.root, `${first.root}/Photos`, third.root]);
+    await window.getByTestId('add-folder-button').click();
+
+    await expect(window.getByTestId('manage-error')).toContainText('already covered', { timeout: 30000 });
+    await expect(window.getByTestId('add-folder-button')).toBeEnabled({ timeout: 30000 });
+    await expect(window.getByTestId('manage-folder-path')).toHaveText([first.root, second.root]);
+    expect(await confirmCalls(app)).toEqual([]);
+
+    await app.close();
+    expect(storedPaths(userDataDir, collectionId)).toEqual([first.root, second.root]);
+  } finally {
+    if (session) await session.app.close().catch(() => {});
+    for (const f of [first, second, third]) cleanupFixtureTree(f.root);
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  }
+});
