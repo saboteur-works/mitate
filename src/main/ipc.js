@@ -6,15 +6,21 @@
  *
  *   folders:pick        -> { canceled, paths }   native folder picker; directories
  *                          only (openDirectory + multiSelections, never openFile)
- *   collections:create  (name, directories) -> { ok: true, summary: { id, name, folderCount } }
- *                          | { ok: false, error }; the tree is loaded by collections:getView
- *                          or { ok: true, canceled: true } when the user declines the
- *                          overlap confirmation (nothing is stored).
+ *   collections:create  (name, directories) -> { ok: true, summary: { id, name, folderCount }, dropped }
+ *                          | { ok: false, error }; the tree is loaded by collections:getView.
+ *                          dropped = [{ path, coveredBy }] lists picks inside another pick that
+ *                          were left out, [] when none. The service no longer cancels for overlap;
+ *                          { ok: true, canceled: true } is still passed through so a future
+ *                          cancel does not break callers.
  *   collections:rename  (collectionId, name) -> { ok: true, summary: { id, name, folderCount } }
  *   collections:delete  (collectionId) -> { ok: true, deleted: true } | { ok: true, canceled: true }
  *                          the service asks for confirmation (native dialog); no files on disk are touched.
- *   collections:addFolder (collectionId, dirPath) -> { ok: true, view } | { ok: true, canceled: true }
- *                          dirPath comes from folders:pick; the service asks for overlap confirmation.
+ *   collections:addFolder (collectionId, dirPath) -> { ok: true, view, replaced } | { ok: true, canceled: true }
+ *                          | { ok: false, error, code: 'FOLDER_COVERED' }
+ *                          dirPath comes from folders:pick. replaced = paths of the folders a
+ *                          confirmed add removed because the new folder contains them, [] when none;
+ *                          the service asks for confirmation only then. A folder inside or identical
+ *                          to one already in the collection is refused with code 'FOLDER_COVERED'.
  *   collections:removeFolder (collectionId, folderId) -> { ok: true, view }
  *                          rename, delete, add and remove fail with code 'COLLECTION_BUSY' while the
  *                          collection has another action in flight (shared guard), remove also with
@@ -87,7 +93,7 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, revealFil
       const created = await service.createCollection(name, directories);
       if (created.canceled) return { canceled: true };
       const { collection, folders } = created;
-      return { summary: { id: collection.id, name: collection.name, folderCount: folders.length } };
+      return { summary: { id: collection.id, name: collection.name, folderCount: folders.length }, dropped: created.dropped || [] };
     }));
 
   handle(CHANNELS.listCollections, () =>
@@ -128,8 +134,10 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, revealFil
   handle(CHANNELS.addFolder, (_event, collectionId, dirPath) =>
     guard(async () => {
       requireStrings(collectionId, dirPath);
-      const view = await service.addFolder(collectionId, dirPath);
-      return view && view.canceled ? { canceled: true } : { view };
+      const result = await service.addFolder(collectionId, dirPath);
+      if (result && result.canceled) return { canceled: true };
+      const { replaced = [], ...view } = result;
+      return { view, replaced };
     }));
 
   handle(CHANNELS.removeFolder, (_event, collectionId, folderId) =>

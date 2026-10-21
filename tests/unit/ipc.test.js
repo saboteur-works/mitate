@@ -175,7 +175,7 @@ describe('collection management channels', () => {
   it('rename returns the summary; add and remove return the view; delete returns deleted', async () => {
     const { service, invoke } = mk();
     expect(await invoke(CHANNELS.renameCollection, 'c1', 'New')).toEqual({ ok: true, summary: { id: 'c1', name: 'New', folderCount: 2 } });
-    expect(await invoke(CHANNELS.addFolder, 'c1', '/d')).toEqual({ ok: true, view });
+    expect(await invoke(CHANNELS.addFolder, 'c1', '/d')).toEqual({ ok: true, view, replaced: [] });
     expect(await invoke(CHANNELS.removeFolder, 'c1', 'f1')).toEqual({ ok: true, view });
     expect(await invoke(CHANNELS.deleteCollection, 'c1')).toEqual({ ok: true, deleted: true });
     expect(service.renameCollection).toHaveBeenCalledOnce();
@@ -191,6 +191,38 @@ describe('collection management channels', () => {
     expect(await invoke(CHANNELS.deleteCollection, 'c1')).toEqual({ ok: true, canceled: true });
     expect(await invoke(CHANNELS.addFolder, 'c1', '/d')).toEqual({ ok: true, canceled: true });
     expect(await invoke(CHANNELS.createCollection, 'n', ['/d'])).toEqual({ ok: true, canceled: true });
+  });
+
+  it('returns replaced beside the view for addFolder, [] when nothing was replaced', async () => {
+    const { invoke } = mk({ addFolder: async () => ({ ...view, replaced: ['/m/a/b'] }) });
+    expect(await invoke(CHANNELS.addFolder, 'c1', '/m/a')).toEqual({ ok: true, view, replaced: ['/m/a/b'] });
+    const plain = mk();
+    expect((await plain.invoke(CHANNELS.addFolder, 'c1', '/d')).replaced).toEqual([]);
+  });
+
+  it('returns a FOLDER_COVERED refusal as an error with its code', async () => {
+    const refuse = async () => { throw Object.assign(new Error('already covered by /m/a'), { code: 'FOLDER_COVERED' }); };
+    const { invoke } = mk({ addFolder: refuse });
+    expect(await invoke(CHANNELS.addFolder, 'c1', '/m/a/b')).toEqual({ ok: false, error: 'already covered by /m/a', code: 'FOLDER_COVERED' });
+  });
+
+  it('returns summary and dropped for create, dropped is [] when no pick was dropped', async () => {
+    const dropped = [{ path: '/m/a/b', coveredBy: '/m/a' }];
+    const created = (extra) => async () => ({ collection: { id: 'c9', name: 'N' }, folders: [{ path: '/m/a' }], files: [], ...extra });
+    const withDrops = mk({ createCollection: created({ dropped }) });
+    expect(await withDrops.invoke(CHANNELS.createCollection, 'N', ['/m/a', '/m/a/b']))
+      .toEqual({ ok: true, summary: { id: 'c9', name: 'N', folderCount: 1 }, dropped });
+    const none = mk({ createCollection: created({}) });
+    expect(await none.invoke(CHANNELS.createCollection, 'N', ['/m/a']))
+      .toEqual({ ok: true, summary: { id: 'c9', name: 'N', folderCount: 1 }, dropped: [] });
+  });
+
+  it('lists replaced, dropped and FOLDER_COVERED in the header comment of ipc.js', () => {
+    const text = fs.readFileSync(new URL('../../src/main/ipc.js', import.meta.url), 'utf8');
+    const header = text.slice(0, text.indexOf('*/'));
+    expect(header).toContain('replaced');
+    expect(header).toContain('dropped');
+    expect(header).toContain('FOLDER_COVERED');
   });
 
   it('returns error and code for COLLECTION_BUSY and LAST_FOLDER', async () => {
