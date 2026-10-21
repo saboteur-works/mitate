@@ -1,14 +1,15 @@
 'use strict';
 
 /*
- * Overlap confirmation at creation e2e (Feature 3, Task 22; FR-8 creation case, FR-6). The
- * folder picker (stubFolderPicker) and the confirmation (stubConfirm, recorded by confirmCalls) are
- * stubbed in the main process, so no native dialog opens. The overlap check and the dialog text
- * come from the real service. The store is read from disk after the app is closed.
+ * Nested picks at creation e2e (Feature 3, Tasks 22 and 36; FR-8 revised 2026-10-21 creation case,
+ * FR-6, FR-13). Picks that lie inside another pick are dropped, whatever the pick order: the
+ * collection is created with the outer folders only, create-notice names each dropped pick and its
+ * cover, and no dialog is asked (confirmCalls stays empty). The folder picker (stubFolderPicker)
+ * and the confirmation (stubConfirm, recorded by confirmCalls) are stubbed in the main process, so
+ * no native dialog opens. The store is read from disk after the app is closed.
  */
 
 const fs = require('node:fs');
-const path = require('node:path');
 const { test, expect } = require('@playwright/test');
 const {
   newUserDataDir, launchApp, stubFolderPicker, gateChannel, stubConfirm, confirmCalls,
@@ -16,11 +17,6 @@ const {
 const { buildFixtureTree, cleanupFixtureTree } = require('../support/fixture-tree.js');
 const { CHANNELS } = require('../../src/main/ipc.js');
 const { openStorage } = require('../../src/main/storage/index.js');
-
-const storeFile = (userDataDir) => path.join(userDataDir, 'store.json');
-const readStore = (userDataDir) =>
-  (fs.existsSync(storeFile(userDataDir)) ? fs.readFileSync(storeFile(userDataDir), 'utf8') : null);
-const indexSize = (userDataDir) => openStorage({ location: { baseDir: userDataDir } }).getIndex().length;
 
 async function withApp(label, body) {
   const userDataDir = newUserDataDir(label);
@@ -40,61 +36,88 @@ async function pickAndName(window, name) {
   await window.getByTestId('collection-name').fill(name);
 }
 
-test('overlapping picks: one confirmation names the overlap; cancel keeps the form, confirm creates', async () => {
-  await withApp('create-overlap', async ({ app, window, tree, userDataDir }) => {
-    const inner = `${tree.root}/Photos`;
-    await stubFolderPicker(app, [tree.root, inner]);
-    const rescan = await gateChannel(app, CHANNELS.rescanCollection);
-    const byId = (id) => window.getByTestId(id);
+const stateOf = (userDataDir) => {
+  const storage = openStorage({ location: { baseDir: userDataDir } });
+  const [collection] = storage.listCollections();
+  const folders = storage.listFolders(collection.id);
+  return { storage, collection, folders, index: storage.getIndex({ collectionId: collection.id }) };
+};
 
-    await pickAndName(window, 'Overlap');
-    await expect(byId('folder-item')).toHaveCount(2);
+for (const order of ['outer first', 'inner first']) {
+  test(`nested picks (${order}): the inner pick is dropped with a notice, no confirmation, nothing stored for it`, async () => {
+    await withApp('create-nested', async ({ app, window, tree, userDataDir }) => {
+      const inner = `${tree.root}/Photos`;
+      const picks = order === 'outer first' ? [tree.root, inner] : [inner, tree.root];
+      await stubFolderPicker(app, picks);
+      await stubConfirm(app, []);
+      const rescan = await gateChannel(app, CHANNELS.rescanCollection);
+      const byId = (id) => window.getByTestId(id);
 
-    // Cancel (the default answer): the form stays as it was, nothing is created, no error.
-    await stubConfirm(app, [false]);
-    await byId('create-collection').click();
-    await expect.poll(async () => (await confirmCalls(app)).length, { timeout: 30000 }).toBe(1);
-    await expect(byId('create-collection')).toBeEnabled({ timeout: 30000 });
-    const call = JSON.stringify((await confirmCalls(app))[0]);
-    expect(call).toContain('already covered');
-    expect(call).toContain(tree.root);
-    await expect(byId('collection-name')).toHaveValue('Overlap');
-    await expect(byId('folder-item')).toHaveText([tree.root, inner]);
-    await expect(byId('collection-item')).toHaveCount(0);
-    await expect(byId('create-error')).toBeHidden();
-    const listed = await window.evaluate(() => window.mediaOrganizer.listCollections());
-    expect(listed.summaries).toHaveLength(0);
-    expect(await rescan.calls()).toBe(0);
+      await pickAndName(window, 'Nested');
+      await expect(byId('folder-item')).toHaveCount(2);
+      await byId('create-collection').click();
+      await expect(byId('collection-item')).toHaveCount(1, { timeout: 30000 });
+      await expect(byId('collection-folder-count')).toHaveText('1');
+      await expect(byId('create-notice')).toBeVisible();
+      await expect(byId('create-notice')).toContainText(inner);
+      await expect(byId('create-notice')).toContainText(tree.root);
+      await expect(byId('create-error')).toBeHidden();
+      await expect(byId('folder-item')).toHaveCount(0);
+      await expect(byId('collection-name')).toHaveValue('');
+      expect(await confirmCalls(app)).toEqual([]);
+      expect(await rescan.calls()).toBe(0);
 
-    // Create again with the same form and confirm: both folders, form cleared.
-    await stubConfirm(app, [true]);
-    await byId('create-collection').click();
-    await expect(byId('collection-item')).toHaveCount(1, { timeout: 30000 });
-    await expect(byId('collection-folder-count')).toHaveText('2');
-    await expect(byId('folder-item')).toHaveCount(0);
-    await expect(byId('collection-name')).toHaveValue('');
-    await expect(byId('create-error')).toBeHidden();
-    expect(await confirmCalls(app)).toHaveLength(2);
+      // The tree shows only the outer root, and each file once.
+      await byId('collection-item').click();
+      await expect(window.getByTestId('tree-row').first()).toBeVisible({ timeout: 30000 });
+      const rows = await window.evaluate(() =>
+        [...document.querySelectorAll('[data-testid="tree-row"]')].map((r) => r.dataset.path));
+      expect(rows).toEqual([tree.root]);
+      await window.getByTestId('tree-row').first().click();
+      const paths = await window.evaluate(() =>
+        [...document.querySelectorAll('[data-testid="tree-row"]')].map((r) => r.dataset.path));
+      expect(new Set(paths).size).toBe(paths.length);
+      expect(paths).toContain(inner);
 
-    await app.close();
-    const folders = openStorage({ location: { baseDir: userDataDir } });
-    const [collection] = folders.listCollections();
-    expect(folders.listFolders(collection.id).map((f) => f.path)).toEqual([tree.root, inner]);
+      await app.close();
+      const { folders, index, storage } = stateOf(userDataDir);
+      expect(folders.map((f) => f.path)).toEqual([tree.root]);
+      expect(index.length).toBeGreaterThan(0);
+      expect(index.every((r) => r.folderId === folders[0].id)).toBe(true);
+      expect(storage.listFolders().some((f) => f.path === inner)).toBe(false);
+
+      // Nothing is stored for the dropped folder after a relaunch either.
+      const again = await launchApp(userDataDir);
+      try {
+        await expect(again.window.getByTestId('collection-item')).toHaveCount(1, { timeout: 30000 });
+        await again.window.getByTestId('collection-item').click();
+        await expect(again.window.getByTestId('manage-folder-path')).toHaveText([tree.root], { timeout: 30000 });
+        await expect(again.window.locator(`[data-testid="tree-row"][data-path="${inner}"]`)).toHaveCount(0);
+      } finally {
+        await again.app.close().catch(() => {});
+      }
+      expect(stateOf(userDataDir).folders.map((f) => f.path)).toEqual([tree.root]);
+    });
   });
-});
+}
 
-test('cancel leaves the store and index exactly as they were', async () => {
-  await withApp('create-overlap-cancel', async ({ app, window, tree, userDataDir }) => {
-    await stubFolderPicker(app, [tree.root, `${tree.root}/Photos`]);
-    await stubConfirm(app, [false]);
-    const storeBefore = readStore(userDataDir);
-    await pickAndName(window, 'Never');
-    await window.getByTestId('create-collection').click();
-    await expect.poll(async () => (await confirmCalls(app)).length, { timeout: 30000 }).toBe(1);
-    await expect(window.getByTestId('create-collection')).toBeEnabled({ timeout: 30000 });
-    await app.close();
-    expect(readStore(userDataDir)).toBe(storeBefore);
-    expect(indexSize(userDataDir)).toBe(0);
+test('unrelated picks create all their folders with no notice and no confirmation', async () => {
+  await withApp('create-unrelated', async ({ app, window, tree, userDataDir }) => {
+    const other = buildFixtureTree();
+    try {
+      await stubFolderPicker(app, [tree.root, other.root]);
+      await stubConfirm(app, []);
+      await pickAndName(window, 'Unrelated');
+      await window.getByTestId('create-collection').click();
+      await expect(window.getByTestId('collection-item')).toHaveCount(1, { timeout: 30000 });
+      await expect(window.getByTestId('collection-folder-count')).toHaveText('2');
+      await expect(window.getByTestId('create-notice')).toBeHidden();
+      expect(await confirmCalls(app)).toEqual([]);
+      await app.close();
+      expect(stateOf(userDataDir).folders.map((f) => f.path)).toEqual([tree.root, other.root]);
+    } finally {
+      cleanupFixtureTree(other.root);
+    }
   });
 });
 
@@ -109,6 +132,7 @@ test('the same folder created into two collections is accepted with no confirmat
     }
     await expect(byId('collection-name-label')).toHaveText(['First', 'Second']);
     await expect(byId('create-error')).toBeHidden();
+    await expect(byId('create-notice')).toBeHidden();
     expect(await confirmCalls(app)).toEqual([]);
     await app.close();
     const storage = openStorage({ location: { baseDir: userDataDir } });
