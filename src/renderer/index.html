@@ -32,10 +32,16 @@
       <p class="manage-notice" data-testid="manage-notice" role="status" hidden></p>
     </section>
     <section>
-      <h2>Tree</h2>
-      <button type="button" data-testid="rescan" disabled>Rescan</button>
-      <span data-testid="rescan-status" role="status"></span>
-      <div class="tree-view" data-testid="tree-view"></div>
+      <h2>Files</h2>
+      <div data-testid="rescan-section">
+        <button type="button" data-testid="rescan" disabled>Rescan</button>
+        <span data-testid="rescan-status" role="status"></span>
+      </div>
+      <div class="view-tabs" role="tablist" aria-label="Views" data-testid="view-tabs"></div>
+      <div class="view-area" role="tabpanel" data-testid="view-area">
+        <div class="tree-view" data-testid="tree-view"></div>
+        <div class="list-view view-inactive" data-testid="list-view"></div>
+      </div>
     </section>
     <section class="file-detail">
       <h2>File location</h2>
@@ -51,6 +57,9 @@
     <script src="../shared/list-window.js"></script>
     <script src="../shared/tabs-model.js"></script>
     <script src="tree-view.js"></script>
+    <script src="list-view.js"></script>
+    <script src="view-tabs.js"></script>
+    <script src="type-views.js"></script>
     <script src="../shared/file-detail.js"></script>
     <script src="file-detail.js"></script>
     <script src="create-collection.js"></script>

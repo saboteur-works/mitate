@@ -76,6 +76,7 @@
     selectedCollectionId = collectionId;
     highlightSelected();
     window.TreeView.show(result.view.folders, result.view.files);
+    window.TypeViews.show(result.view);
     document.dispatchEvent(new CustomEvent('collection-selected', { detail: { collectionId } }));
   }
 
@@ -136,6 +137,7 @@
     selectedCollectionId = null;
     highlightSelected();
     window.TreeView.show([], []);
+    window.TypeViews.clear();
     document.dispatchEvent(new CustomEvent('collection-selected', { detail: { collectionId: null } }));
   });
 
