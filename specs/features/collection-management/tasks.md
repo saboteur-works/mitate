@@ -45,6 +45,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 2
 **Estimate:** 3
 **Notes:** Covers FR-8 (seven listed cases plus identical path, wording, naming the overlapping folder) and FR-13 (overlap unit tests). Pure apart from the injected `realpath` (default `fs.realpathSync`); no confirmation dialog here, only the text. When several existing folders overlap, name the first in the given order and mention the count.
+**Superseded in part:** by Task 28 (2026-10-21): `describeOverlap` and its two confirmation wordings are replaced by refusal, replace and notice text; `findOverlaps` stays.
 **POS:** task_7513335f
 **Done:** [x]
 
@@ -95,6 +96,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 1, 3, 4, 7
 **Estimate:** 5
 **Notes:** Covers FR-6, FR-7, FR-8, FR-11, FR-12, FR-4 (`folderIds` append) and FR-13. Refactor the existing private `validate` so creation and add share the absolute/readable/storage-file checks (keep creation behaviour and messages). Order: busy check, validation, overlap check, confirm, then acquire-and-scan; confirm happens before any scan, so a cancel costs nothing. Hold the guard from before the confirmation so a rescan cannot start while the dialog is open.
+**Superseded in part:** by Task 29 (2026-10-21): an inside or identical folder is now refused instead of confirmed, and a containing folder replaces the contained ones on confirm instead of keeping both.
 **POS:** task_fd3b4b30
 **Done:** [x]
 
@@ -105,6 +107,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 3, 8
 **Estimate:** 2
 **Notes:** Covers FR-8 (creation case) and FR-6 (same folder in several collections at creation). A folder given twice is de-duplicated by the existing `path.resolve` collapse and is not an overlap prompt at creation; an identical path matters only against a collection's existing folders. The overlap check runs after validation and before any scan.
+**Superseded in part:** by Task 30 (2026-10-21): nested picks are dropped with a notice instead of asking for confirmation.
 **POS:** task_5ad00b33
 **Done:** [x]
 
@@ -205,6 +208,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 14, 15, 17
 **Estimate:** 3
 **Notes:** Covers FR-7 and FR-13. While an add is in flight the panel marks the collection busy through `CollectionBusy.begin/end` (the disabling UI is Task 23). Restore permissions in `afterEach`; run `chmod` fixtures on a copy of the fixture tree (`lockFolder`/`unlockFolder` in `fixture-tree.js`). A cancelled picker (`canceled: true`) adds nothing; `stubFolderPicker` always answers with paths, so that case is covered by the unit tests of the picker handler already in `ipc.test.js`.
+**Superseded in part:** by Task 32 (2026-10-21): the panel also shows a notice when a replace removed folders; refusals show in `manage-error`.
 **POS:** task_19797402
 **Done:** [x]
 
@@ -215,6 +219,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 19
 **Estimate:** 3
 **Notes:** Covers FR-8 (dialog content, cancel writes nothing, confirm keeps both, identical path) and FR-13. The symlink case builds a link inside a temp directory next to the fixture; skip with a stated reason if the platform refuses symlinks. Spec-only task.
+**Superseded in part:** by Tasks 34 and 35 (2026-10-21): the inside, identical and symlink cases are refused, and the contains case replaces; this spec file is rewritten there.
 **POS:** task_5ca3e0e0
 **Done:** [x]
 
@@ -235,6 +240,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 12, 14, 21
 **Estimate:** 2
 **Notes:** Covers FR-8 (creation case) and FR-6 (same folder at creation) in the UI. `collections:create` returns `{ ok: true, canceled: true }` on cancel; the current code would treat it as success and clear the form, so branch on `canceled` first. Edits `create-collection.js` after Task 21 (declared dependency for file ordering).
+**Superseded in part:** by Tasks 33 and 36 (2026-10-21): creation no longer confirms for nesting; it drops nested picks and shows a notice.
 **POS:** task_982bde68
 **Done:** [x]
 
@@ -275,6 +281,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 11, 17, 19
 **Estimate:** 3
 **Notes:** Covers FR-9 and FR-13 (e2e). Expanding the roots uses the existing tree interactions in `tree-view.spec.js`. Spec-only task.
+**Superseded in part:** by Task 37 (2026-10-21): the UI can no longer build nested or identical roots, so this spec seeds them in the store as legacy data.
 **POS:** task_0867bb8a
 **Done:** [x]
 
@@ -285,16 +292,156 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Depends on:** 18, 20, 21, 22
 **Estimate:** 3
 **Notes:** Covers FR-10 and US-3. Follow `tests/e2e/reveal-readonly.spec.js` for the snapshot pattern: both snapshots are taken with the app closed to keep the ordering rule of `tools/readonly-check`. The store lives in the user data dir, outside the fixture tree.
+**Superseded in part:** by Task 39 (2026-10-21): the overlapping add and overlapping creation steps change to refused, replace and drop-nested steps.
 **POS:** task_086ec0b3
 **Done:** [x]
 
+**Revision 2026-10-21 (Tasks 28 to 40).** Tasks 1 to 27 are done and committed. After the hands-on check the user changed the overlap rules (spec FR-8, FR-9; product FR-5): inside or identical is refused with no dialog; containing asks for confirmation and replaces the contained folders in one transaction; creation drops nested picks and tells the user. Tasks 28 to 40 are the delta only. Design decisions of this delta:
+- Classification stays in `src/main/collections/overlap.js`. `findOverlaps` keeps its result and gains `identical` (true when `covered` is the identical path, not a parent). When a candidate is inside one folder and also contains another (possible only with legacy nested data), inside wins and the add is refused. New helpers: `describeRefusal`, `describeReplace`, `dropNested` and `describeDropped`. `describeOverlap` is removed.
+- Refusal is a thrown error with `code === 'FOLDER_COVERED'` (one code for inside and identical; the message differs). It is returned through `guard` in `ipc.js` as `{ ok: false, error, code }`, so the renderer shows it in `manage-error` with no new UI.
+- `addFolder` on a containing folder keeps the order confirm, then scan, then one `storage.transaction`. The transaction puts the new folder record, sets its index, removes each contained folder with the remove-folder cleanup (`replaceFolderIndex(id, [])` then `storage.removeFolder(id)`, which already deletes only that collection's records and the id from `folderIds`), and writes `folderIds` as the old list minus the replaced ids plus the new id. The last-folder refusal is not applied. The service result carries `replaced` (the removed folder paths). The confirm label is "Replace folders".
+- `createCollection` drops nested picks after validation (so a dropped pick must still be a readable directory, as before) and before any scan. Its result carries `dropped: [{ path, coveredBy }]`, where `coveredBy` is the kept outermost pick. It no longer calls `confirm`.
+- `src/shared/tree-model.js` (Task 11) is not changed. Its build-time de-duplication stays as the safety net for collections stored before this change (store v1, written by Feature 1 or by the earlier confirm-and-keep-both behaviour). No migration rewrites them and the store format stays 1.
+- Consequence to test: after a replace, files from the removed inner folder have new node ids under the new outer root, so a selection in the removed root is cleared by the existing `TreeView.update` rule.
+
+### Task 28: Overlap module refuses, replaces and drops nested picks
+**What:** Extend `src/main/collections/overlap.js` with `identical` on the `findOverlaps` result and add `describeRefusal`, `describeReplace`, `dropNested` and `describeDropped`; remove `describeOverlap`.
+**Files:** src/main/collections/overlap.js, tests/unit/overlap.test.js
+**Done when:** `npx vitest run tests/unit/overlap.test.js` exits 0, with tests asserting: `findOverlaps` returns `identical: true` for an identical path (also `/a/b/` against `/a/b` and `/A/B` against `/a/b`) and `false` for an inside path, and its other fields are unchanged for the inside, contains, unrelated, `/a/b` against `/a/bc`, trailing slash, case difference and symlink cases of Task 3; `describeRefusal` returns text containing "already covered" and the covering folder's path for inside, text containing "already in the collection" and the path for identical, and `null` for contains or unrelated; a candidate that is inside one folder and contains another gets the refusal text; `describeReplace` for one contained folder returns `{ message, detail }` where `detail` names that folder and contains "will be replaced", for three contained folders it names all three, and it returns `null` for inside, identical or unrelated; `dropNested(['/a', '/a/b', '/a/b/c', '/x'], { realpath })` returns kept `['/a', '/x']` and dropped `[{ path: '/a/b', coveredBy: '/a' }, { path: '/a/b/c', coveredBy: '/a' }]`; the result is the same when the picks are given inner first; picks that are identical after `realpath` (a symlink and its target) keep the first and drop the later one as covered by it; `/a/b` and `/a/bc` do not drop each other; picks with nothing nested return all kept and an empty `dropped`; `describeDropped` returns `null` for an empty list and otherwise text that names every dropped folder and the folder that covers it; `describeOverlap` is no longer exported.
+**Depends on:** none
+**Estimate:** 3
+**Notes:** Covers FR-8 (inside, identical, contains and creation wording; same path comparison as before) and FR-13 (unit tests for the new rules). The path comparison is unchanged (FR-8). Rewrite the `describeOverlap` tests of Task 3 as the new helper tests. `service.js` still imports `describeOverlap` until Tasks 29 and 30, so run this task and Task 29 as one change set or keep `describeOverlap` exported until Task 30 removes its last use; the Done condition above applies once Task 30 has landed.
+**POS:** task_7f8a917c
+**Done:** [ ]
+
+### Task 29: Service addFolder refuses inside and identical, replaces on contains
+**What:** Change `addFolder` in `src/main/collections/service.js` so an inside or identical folder is refused with `FOLDER_COVERED`, and a containing folder asks for confirmation and on confirm replaces the contained folders in one transaction.
+**Files:** src/main/collections/service.js, tests/unit/collection-service.test.js
+**Done when:** `npx vitest run tests/unit/collection-service.test.js` exits 0, with tests asserting: a folder inside an existing folder rejects with `code === 'FOLDER_COVERED'` and a message containing "already covered" and the covering folder's path, `confirm` is not called, the injected `scan` is not called, the store is not written and is unchanged; an identical path (also with a trailing slash, in different case, and through a symlink) rejects the same way with a message saying it is already in the collection; the same folder added to a second collection is accepted and stores a separate `FolderRecord` (Task 8 behaviour kept); a folder that contains one existing folder calls `confirm` once, before any scan, with a detail that names that folder and says it will be replaced and the label "Replace folders"; confirm true leaves the collection with the new folder only, its index scanned, the contained folder record, its index entries and its access data gone, `folderIds` equal to the old list minus the removed id plus the new id, the injected `scan` called once with the new path (the other folders are not scanned) and exactly one store write; a folder containing two of three existing folders replaces those two and keeps the third; a collection whose every folder is contained is replaced entirely and does not throw `LAST_FOLDER`; a second collection holding a folder with the same path as a replaced folder is byte-identical afterwards (record, index, access data, `folderIds`); confirm false resolves `{ canceled: true }` with no scan, no write, and the store unchanged; with no `confirm` injected the result is `{ canceled: true }`; the result of a confirmed replace carries `replaced` with the removed folder paths and the refreshed view; a candidate that is inside one existing folder and contains another is refused; a failure injected inside the transaction (a `storage.removeFolder` that throws after `replaceFolderIndex`) leaves the store unchanged in memory and on disk; a new folder that passes the readability check but whose scan fails is stored `unavailable: true` with an empty index and the contained folders are still replaced (as for any add); the guard is held across the confirmation and the scan and released afterwards, including after a refusal, a cancel and a failure; an add refused as busy neither classifies nor asks; Task 8 tests that expected a confirmation for inside or identical are changed to expect the refusal.
+**Depends on:** 28
+**Estimate:** 5
+**Notes:** Covers FR-8 (inside, identical, contains), FR-3 and FR-4 (the replace uses the remove-folder cleanup, the last-folder rule does not apply), FR-11 (one transaction, refusal and cancel write nothing), FR-12 and FR-13. The seam is the `addFolder` body at the `describeOverlap` call (Task 8). Compute `folderIds` explicitly and pass it to `putCollection` last, as the shipped code does, so `putFolder`'s append and `removeFolder`'s filter do not fight the final list. Update the header comment of `service.js`.
+**POS:** task_28203add
+**Done:** [ ]
+
+### Task 30: Service createCollection drops nested picks
+**What:** Change `createCollection` in `src/main/collections/service.js` to drop every pick that is inside another pick, scan and store only the outermost picks, and return the dropped picks, with no confirmation.
+**Files:** src/main/collections/service.js, tests/unit/collection-service.test.js
+**Done when:** `npx vitest run tests/unit/collection-service.test.js tests/unit/overlap.test.js` exits 0, with tests asserting: picks `/m/a` and `/m/a/b` (fixture folders) create a collection with one folder record, `/m/a`, the inner folder is not scanned (the injected `scan` is called once) and has no record, and the result's `dropped` is `[{ path: '/m/a/b', coveredBy: '/m/a' }]`; the same result when the inner pick is given first; three picks with two nested pairs report both dropped folders, each with its covering folder; unrelated picks give `dropped: []` and keep every folder; duplicates that collapse after `path.resolve` (existing behaviour) are not in `dropped`; `confirm` is never called at creation, also when `confirm` is injected; a pick that is a symlink to another pick is dropped and reported; the same folder path created in two separate collections is accepted; a dropped pick that is not a readable directory still rejects the whole creation, as validation did before; the store is written once; `folderIds` lists only the kept folders; `describeOverlap` and `describeCreationOverlap` are gone from `service.js` and the build passes (`npm run build` exits 0); the pre-existing creation tests pass, except those from Task 9 that expected a confirmation, which are replaced by the cases above.
+**Depends on:** 28, 29
+**Estimate:** 3
+**Notes:** Covers FR-8 (creation case) and FR-13 (creation drop-nested). Replaces `describeCreationOverlap` and the `confirm` call of Task 9. The result shape is `{ collection, folders, files, dropped }`; other service methods are unchanged. Update the header comment of `service.js`.
+**POS:** task_2096211b
+**Done:** [ ]
+
+### Task 31: IPC passes the refusal, the replaced folders and the dropped picks
+**What:** Make `collections:addFolder` return `replaced` and `collections:create` return `dropped`, and document and test that a `FOLDER_COVERED` refusal reaches the renderer as an error with its code.
+**Files:** src/main/ipc.js, src/main/preload.js, tests/unit/ipc.test.js
+**Done when:** `npx vitest run tests/unit/ipc.test.js && npm run build` exits 0, with tests asserting: a service `addFolder` result with `replaced: ['/m/a/b']` comes back as `{ ok: true, view, replaced: ['/m/a/b'] }` and a result without `replaced` comes back with `replaced: []`; a service `addFolder` error with `code === 'FOLDER_COVERED'` comes back as `{ ok: false, error, code: 'FOLDER_COVERED' }`; a service `createCollection` result with `dropped: [{ path, coveredBy }]` comes back with `summary` and `dropped` unchanged, and a result with no dropped picks comes back with `dropped: []`; `{ canceled: true }` for delete and add-folder still comes back as `{ ok: true, canceled: true }`; the header comment of `ipc.js` lists `replaced`, `dropped` and the code `FOLDER_COVERED`; `preload.js` needs no new channel (a text check that the four management channels are still exposed).
+**Depends on:** 29, 30
+**Estimate:** 2
+**Notes:** Covers FR-8 and FR-12 (errors reach the renderer with codes). `collections:create` can no longer return `{ ok: true, canceled: true }` for overlap; keep the pass-through so a future cancel does not break callers, and say so in the header comment.
+**POS:** task_4513a218
+**Done:** [ ]
+
+### Task 32: Panel shows the refusal and the replace notice
+**What:** Make `src/renderer/collection-manage.js` show a notice naming the folders that a confirmed add replaced, and keep showing a `FOLDER_COVERED` refusal in `manage-error`.
+**Files:** src/renderer/collection-manage.js, src/renderer/index.html, src/renderer/styles.css, tests/e2e/folder-add.spec.js
+**Done when:** `npm run test:e2e -- tests/e2e/folder-add.spec.js` exits 0, with its existing tests unchanged and passing, plus tests asserting: after an add whose result carries `replaced` (a folder containing an existing folder, `stubConfirm(app, [true])`), an element `data-testid="manage-notice"` is visible and contains each replaced folder's path, the panel list shows the new folder and no longer shows the replaced one, and the notice is cleared by the next action in the panel; after a refused add (a subfolder of an existing folder) `manage-error` (`role="alert"`) contains "already covered" and the covering folder's path, the notice is hidden, the panel list and tree are unchanged and `confirmCalls` is `[]`; when one pick of two is refused the first error stops the remaining picks, as for any add error, and the earlier added pick stays.
+**Depends on:** 31
+**Estimate:** 2
+**Notes:** Covers FR-8 (messages shown), FR-7 and FR-13. The seam is `addFolders` in `collection-manage.js`: it already refreshes the tree through `showView` (`TreeView.update`), which drops a selection whose node id disappeared; the notice is the only new UI. Add `manage-notice` next to `manage-error` in `index.html` (`role="status"`). Edits `index.html` (also edited by Task 33).
+**POS:** task_e18c72de
+**Done:** [ ]
+
+### Task 33: Create screen shows which nested picks were dropped
+**What:** Make `src/renderer/create-collection.js` show a notice, after a collection is created, that names each dropped pick and the folder that covers it.
+**Files:** src/renderer/create-collection.js, src/renderer/index.html, src/renderer/styles.css, tests/e2e/create-collection.spec.js
+**Done when:** `npm run test:e2e -- tests/e2e/create-collection.spec.js` exits 0, with its existing tests unchanged and passing, plus a test with `stubFolderPicker` asserting: picking a folder and its subfolder, naming the collection and clicking Create creates the collection (the list shows "(1 folders)"), an element `data-testid="create-notice"` (`role="status"`) is visible and contains the dropped subfolder's path and the covering folder's path, the form is cleared, and the notice is cleared when the user picks another folder or clicks Create again; creating from unrelated folders shows no notice.
+**Depends on:** 31, 32
+**Estimate:** 2
+**Notes:** Covers FR-8 (creation case, the notice) and FR-13. The seam is the create click handler: it already branches on `result.canceled`; add the `result.dropped` branch after `refreshCollections`, and keep the `canceled` pass-through. Edits `index.html` after Task 32 (declared dependency for file ordering).
+**POS:** task_efc9b735
+**Done:** [ ]
+
+### Task 34: E2E refuse inside, identical and symlink when adding a folder
+**What:** Rewrite the inside, identical and symlink cases of `tests/e2e/folder-add-overlap.spec.js` to expect a refusal, and keep the unrelated case.
+**Files:** tests/e2e/folder-add-overlap.spec.js
+**Done when:** `npm run test:e2e -- tests/e2e/folder-add-overlap.spec.js` exits 0, with tests asserting: (inside) adding a subfolder of an existing folder shows an error in `manage-error` containing "already covered" and the existing folder's path, `confirmCalls` is `[]`, and the tree, the panel list and the store (read after closing) are identical to before, with zero `collections:rescan` calls and no new index entries; (identical) adding the same path again shows an error containing "already in the collection", `confirmCalls` is `[]`, and one folder record for the path remains; (symlink) a symlink to an existing folder is refused with "already covered", with nothing changed; (inside, second collection) the same subfolder is accepted into a different collection that does not hold the parent; (unrelated) no confirmation is recorded and the folder is added; no case uses a confirmation answer; no real dialog appears; the old confirm-and-keep-both cases for inside, identical and symlink are gone.
+**Depends on:** 32
+**Estimate:** 3
+**Notes:** Covers FR-8 (refuse inside and identical, nothing written, no scan, no dialog) and FR-13. The contains cases move to Task 35; remove the contains `describe` here in this task so the file passes. The symlink case builds a link inside a temp directory next to the fixture; skip with a stated reason if the platform refuses symlinks. Spec-only task.
+**POS:** task_5e5d046a
+**Done:** [ ]
+
+### Task 35: E2E replace on contains, with the index cleanup
+**What:** Add `tests/e2e/folder-replace.spec.js` for adding a folder that contains existing folders, with confirm and cancel, the index cleanup and the other collection's records.
+**Files:** tests/e2e/folder-replace.spec.js
+**Done when:** `npm run test:e2e -- tests/e2e/folder-replace.spec.js` exits 0, with tests asserting: (cancel) adding the parent of an existing folder with `stubConfirm(app, [false])` records one confirmation whose text names the contained folder and contains "replaced", and afterwards the tree, the panel list and the store (read after closing) are identical to before, with zero `collections:rescan` calls; (confirm) with `[true]` the panel lists the new folder only, the tree has the new root and no root for the removed folder, the store has no folder record, index entries or access data for the removed folder and holds the new folder's index, `folderIds` is the new id only, and this survives a relaunch; (selection) a file selected in the replaced folder is no longer selected after the replace, the detail area shows the empty state and Reveal is disabled, while a file selected in an untouched folder of the same collection stays selected; (several) a collection of three folders, adding a parent of two of them, keeps the third and replaces the two; (all) a collection whose only folder is contained is replaced by the parent without a `LAST_FOLDER` error; (other collection) a second collection holding a folder with the same path as the replaced one has identical folder record, index and tree (JSON compared) before and after, and still shows its files after relaunch; the replaced folder's files on disk still exist (listing compared before and after); only the new folder is scanned.
+**Depends on:** 34
+**Estimate:** 3
+**Notes:** Covers FR-8 (contains, replace, cancel), FR-3 and FR-4 (index cleanup, other collection untouched), FR-9 (selection consequence) and FR-13. Follow the helper structure of `folder-add-overlap.spec.js`; run on a copy of the fixture tree. Spec-only task.
+**POS:** task_e07cc37e
+**Done:** [ ]
+
+### Task 36: E2E creation drops nested picks
+**What:** Rewrite `tests/e2e/create-overlap.spec.js` so nested picks are dropped with a notice and no confirmation.
+**Files:** tests/e2e/create-overlap.spec.js
+**Done when:** `npm run test:e2e -- tests/e2e/create-overlap.spec.js tests/e2e/create-collection.spec.js` exits 0, with tests using `stubFolderPicker` and `stubConfirm` asserting: picking a folder and its subfolder and clicking Create creates the collection with `confirmCalls` equal to `[]`, shows `create-notice` naming the dropped subfolder and the covering folder, the store (read after closing) has one folder record, for the outer folder, with an index, and no record or index entries for the subfolder; picking the subfolder first gives the same result; the tree shows only the outer root and each file once; the same folder created into two collections is accepted with no notice and no confirmation; unrelated picks create all their folders with no notice; the store holds nothing for the dropped folder after a relaunch; the old confirm and cancel cases are gone.
+**Depends on:** 33
+**Estimate:** 2
+**Notes:** Covers FR-8 (creation case, notice, no dialog) and FR-6 (same folder at creation) and FR-13. Spec-only task.
+**POS:** task_49e87628
+**Done:** [ ]
+
+### Task 37: E2E one appearance for legacy nested roots
+**What:** Change `tests/e2e/dedup.spec.js` to seed nested and identical roots in the store as legacy data, and add a test that the UI refuses to build them.
+**Files:** tests/e2e/dedup.spec.js
+**Done when:** `npm run test:e2e -- tests/e2e/dedup.spec.js` exits 0, with tests asserting: (inside, legacy) a store seeded before launch with a root R and its subfolder S as two folder records of one collection (written with `openStorage`, as `file-selection.spec.js` seeds one) shows each file once, under R, and the S root row is still present; (contains, legacy) the order S then R in `folderIds` gives the same single appearance, under R; (identical, legacy) two records with the same path show each file once, under the earlier one in `folderIds`; clicking a file selects exactly one row and `file-detail` shows its path once; after a Rescan and after a relaunch the single appearance still holds; removing the outer root through the panel makes the files appear under the inner root, with the selection kept only if its node id still exists, otherwise cleared; the store holds no change from the de-duplication (folder and index records are the same set as seeded); the seeded store is not rewritten at launch (file bytes before and after launch are equal); (UI) building the same inside, contains and identical shapes through the panel and the creation screen no longer produces a nested or identical root, with the inside and identical adds refused and the contains add replacing; the old confirm-and-keep-both UI cases are gone.
+**Depends on:** 32, 33
+**Estimate:** 3
+**Notes:** Covers FR-9 (safety net for legacy data, no migration) and FR-13. The UI cases are thin pointers to Tasks 34 to 36 and only assert the store ends without nesting. The seeded stores use format 1. Spec-only task.
+**POS:** task_4ee09426
+**Done:** [ ]
+
+### Task 38: Unit test that legacy nested roots stay readable and unchanged
+**What:** Add unit tests that a version-1 store holding nested and identical roots opens unchanged, builds a tree that shows each file once, and is not rewritten by reading it.
+**Files:** tests/unit/v1-store.test.js
+**Done when:** `npx vitest run tests/unit/v1-store.test.js tests/unit/tree-model.test.js` exits 0, with new tests asserting: a store written with a collection of two nested folder records (outer and inner, each with an index that lists the same file) opens with `openStorage`, `getCollectionView` returns both folders in `folderIds` order, and `TreeModel.buildTree` over that view returns the file once, under the outer root, with the inner root present; the same for two identical-path records (the earlier in `folderIds` owns the file); the file bytes are identical before and after opening and after building the view (no migration, nothing written); `"version": 1` is still the saved version after `renameCollection`, `removeFolder` and `deleteCollection` on that collection; `addFolder` of a folder that contains both nested legacy folders replaces both (Task 29 rule) and the saved file stays version 1; `addFolder` of a folder inside the legacy outer folder is refused with `FOLDER_COVERED`.
+**Depends on:** 29
+**Estimate:** 2
+**Notes:** Covers FR-9 (legacy data keeps showing each file once, no migration), FR-6 (no format bump) and FR-13. Build the store in the test with `openStorage` and `putFolder`; it does not need the pre-feature commit fixture of Task 13.
+**POS:** task_a4febd2f
+**Done:** [ ]
+
+### Task 39: Read-only check around the changed overlap flows
+**What:** Change `tests/e2e/management-readonly.spec.js` so the overlapping add and overlapping creation steps become refused add, replace-on-contains and drop-nested creation steps.
+**Files:** tests/e2e/management-readonly.spec.js
+**Done when:** `npm run test:e2e -- tests/e2e/management-readonly.spec.js` exits 0, with the sequence of Task 27 changed so that the "add folder (confirm true, overlapping)" step becomes a refused add of a subfolder, then a replace-on-contains add with confirm true, and the "creation with overlapping folders (confirm true)" step becomes a creation from nested picks whose notice is asserted; the cancelled variant runs a replace with confirm false and asserts the collection is unchanged; `assert(compare(before, after))` passes for both runs with no non-atime differences, the atime difference, if any, printed; each step is confirmed to have run (the list, the panel, the tree and the notices reflect it).
+**Depends on:** 35, 36
+**Estimate:** 3
+**Notes:** Covers FR-10 (a refused add and a replace are included in the read-only check) and US-3. Keep both snapshots with the app closed, as in Task 27.
+**POS:** task_6cb71259
+**Done:** [ ]
+
+### Task 40: Update the README and sweep for old overlap wording
+**What:** Update `README.md` and the header comments of the changed files so they describe refuse, replace and drop-nested instead of confirm-and-keep-both, and search the repository for stale wording.
+**Files:** README.md, src/renderer/tree-view.js, src/shared/tree-model.js
+**Done when:** `npm test && npm run build` exits 0; `grep -rn "keeps both\|both folders stay\|confirm keeps\|already contains a folder inside the one being added" README.md src tests` prints nothing except the text in `overlap.js` that `describeReplace` builds or the tests of that text; the README lines 15, 16, 103 and 105 describe the refusal, the replace, the drop-nested notice and the legacy safety net (nested roots written before this change still show each file once, with no migration); the header comments of `tree-model.js` and `tree-view.js` that say "roots /a and /a/b are both kept" say that this can only occur in collections stored before the change.
+**Depends on:** 32, 33
+**Estimate:** 1
+**Notes:** Covers FR-8 and FR-9 (documentation of the revised rules). Text only; no behaviour change. `tree-model.js` logic is not edited.
+**POS:** task_786dc4ab
+**Done:** [ ]
+
 ## Summary
-- Total tasks: 27
-- Total estimated effort: 75
-- Parallel waves: (1) Tasks 1, 2, 4, 5, 15, 24; (2) Tasks 3, 6; (3) Task 7; (4) Task 8; (5) Tasks 9, 13; (6) Tasks 10, 12; (7) Tasks 11, 14; (8) Task 16; (9) Task 17; (10) Tasks 18, 19; (11) Tasks 20, 21, 26; (12) Tasks 22, 23, 25; (13) Task 27. Same-file conflicts: Tasks 6 to 10 all edit `src/main/collections/service.js` and its test file (serial); Tasks 4 and 12 edit `main.js`; Tasks 12 edits `ipc.js` and `preload.js` alone; Tasks 11, 15, 16, 17, 19 and 21 edit `src/renderer/index.html`; Tasks 16, 17, 19, 21 and 23 edit `collection-manage.js`; Tasks 16, 21 and 22 edit `create-collection.js`; Tasks 2, 3, 4, 5, 15 and 16 each add a line to the `build` script in `package.json` (a one-line merge). Tasks 18, 20, 24, 25, 26, 27 only add e2e spec files.
-- Critical path: Tasks 1 → 6 → 7 → 8 → 9 → 12 → 14 → 16 → 17 → 19 → 21 → 22 → 27 (39 points)
-- Risks: Task 8 is the largest and carries the most logic (validation reuse, overlap, confirmation, guard timing, transaction); the guard must be held before the confirmation so a rescan cannot interleave. Task 14 depends on a `dialog` proxy in `background-main.js`; the existing picker stub assigns on the real module through `app.evaluate`, so the proxy must forward every other key or the picker stub stops working. Task 11 adds a rule the spec does not state (an inner root keeps a file the owning root has no record of); if the product owner wants strict outer-root ownership, only that condition changes. Task 10 makes the renderer rely on a derived `resolvedPath`; symlinked roots are de-duplicated only through it. Task 13 depends on a fixture generated from the pre-feature commit; generate it before Task 1 is merged or from the recorded commit. Task 19/20 `chmod` and symlink cases depend on the sandbox permitting them and are skipped with a stated reason otherwise. Real v1 stores may have a stale `folderIds`, so ordering code must not assume it is complete (Task 10, Task 13).
-- FR coverage: FR-1 (6, 12, 16), FR-2 (7, 12, 14, 21), FR-3 (6, 12, 17, 18), FR-4 (1, 6, 7, 8, 21, 25), FR-5 (24), FR-6 (1, 8, 9, 10, 13, 25), FR-7 (8, 12, 19), FR-8 (2, 3, 5, 8, 9, 20, 22), FR-9 (2, 10, 11, 26), FR-10 (27), FR-11 (1, 6, 7, 8, 12, 13), FR-12 (4, 6, 7, 8, 15, 23), FR-13 (1, 3, 4, 6, 7, 8, 11, 14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26)
+- Total tasks: 40
+- Total estimated effort: 109 (75 for Tasks 1 to 27 done, 34 for Tasks 28 to 40 added 2026-10-21 for the revised overlap rules)
+- Parallel waves for the delta: (1) Task 28; (2) Task 29; (3) Tasks 30, 38; (4) Task 31; (5) Task 32; (6) Tasks 33, 34, 37 (37 needs 33, so it follows 33 in the same wave only after 33 merges); (7) Tasks 35, 36, 40; (8) Task 39. Same-file conflicts: Tasks 29 and 30 edit `service.js` and `collection-service.test.js` (serial, and 28 is edited by none of them); Tasks 32 and 33 edit `index.html` (serial); Tasks 34 and 35 touch `folder-add-overlap.spec.js` (35 adds a new file but 34 removes the contains cases first). Tasks 34, 35, 36, 37, 38 and 39 only edit test files.
+- Critical path: Tasks 1 → 6 → 7 → 8 → 9 → 12 → 14 → 16 → 17 → 19 → 21 → 22 → 27 (39 points) for Tasks 1 to 27, then for the 2026-10-21 delta Tasks 28 → 29 → 30 → 31 → 32 → 34 → 35 → 39 (24 points)
+- Risks: Task 29 carries the transaction that adds one folder and removes several, with `folderIds` set explicitly; `putFolder` appends and `removeFolder` filters, so the final list must be written last. The old Task 8 and Task 9 tests expected confirmations and must be changed, not deleted, so the cancel-writes-nothing assertions survive. A candidate that is inside one folder and contains another is possible only with legacy data; inside wins (refuse). A multi-pick add stops at the first refusal, as for any add error. Legacy collections keep nested roots; Tasks 37 and 38 prove they still show each file once and are never rewritten.
+- Original risks (Tasks 1 to 27): Task 8 is the largest and carries the most logic (validation reuse, overlap, confirmation, guard timing, transaction); the guard must be held before the confirmation so a rescan cannot interleave. Task 14 depends on a `dialog` proxy in `background-main.js`; the existing picker stub assigns on the real module through `app.evaluate`, so the proxy must forward every other key or the picker stub stops working. Task 11 adds a rule the spec does not state (an inner root keeps a file the owning root has no record of); if the product owner wants strict outer-root ownership, only that condition changes. Task 10 makes the renderer rely on a derived `resolvedPath`; symlinked roots are de-duplicated only through it. Task 13 depends on a fixture generated from the pre-feature commit; generate it before Task 1 is merged or from the recorded commit. Task 19/20 `chmod` and symlink cases depend on the sandbox permitting them and are skipped with a stated reason otherwise. Real v1 stores may have a stale `folderIds`, so ordering code must not assume it is complete (Task 10, Task 13).
+- FR coverage: FR-1 (6, 12, 16), FR-2 (7, 12, 14, 21), FR-3 (6, 12, 17, 18, 29, 35), FR-4 (1, 6, 7, 8, 21, 25, 29, 35), FR-5 (24), FR-6 (1, 8, 9, 10, 13, 25, 30, 36, 38), FR-7 (8, 12, 19, 32), FR-8 (2, 3, 5, 8, 9, 20, 22, 28, 29, 30, 31, 32, 33, 34, 35, 36, 40), FR-9 (2, 10, 11, 26, 35, 37, 38, 40), FR-10 (27, 39), FR-11 (1, 6, 7, 8, 12, 13, 29), FR-12 (4, 6, 7, 8, 15, 23, 29, 31), FR-13 (1, 3, 4, 6, 7, 8, 11, 14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38)
 
 ## Open Questions
 None.
