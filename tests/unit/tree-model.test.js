@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { buildTree, flattenVisible, compareNames } = require('../../src/shared/tree-model.js');
+const { buildTree, flattenVisible, compareNames, ownedFiles } = require('../../src/shared/tree-model.js');
 
 const folder = (id, p, unavailable = false) => ({ id, collectionId: 'c1', path: p, unavailable });
 const file = (folderId, root, rel, extra = {}) => ({
@@ -366,4 +366,138 @@ describe('buildTree de-duplication across overlapping roots', () => {
     expect(Date.now() - start).toBeLessThan(2000);
     expect(filesUnder(tree, 's')).toEqual([]);
   });
+});
+
+describe('ownedFiles', () => {
+  const paths = (list) => list.map((r) => r.path);
+  const outer = folder('m', '/m');
+  const inner = folder('s', '/m/sub');
+  const outerFiles = [file('m', '/m', 'sub/x.jpg'), file('m', '/m', 'top.jpg')];
+  const innerFiles = [file('s', '/m/sub', 'x.jpg'), file('s', '/m/sub', 'y.jpg')];
+
+  it('returns, per folder id, the file records that root owns', () => {
+    const owned = ownedFiles([folder('a', '/a'), folder('b', '/b')], [file('a', '/a', '1.jpg'), file('b', '/b', '2.jpg')]);
+    expect([...owned.keys()]).toEqual(['a', 'b']);
+    expect(paths(owned.get('a'))).toEqual(['/a/1.jpg']);
+    expect(paths(owned.get('b'))).toEqual(['/b/2.jpg']);
+  });
+
+  it('keeps the file with the outer root and drops it from the inner root only when the outer has a record', () => {
+    const owned = ownedFiles([outer, inner], [...outerFiles, ...innerFiles]);
+    expect(paths(owned.get('m'))).toEqual(['/m/sub/x.jpg', '/m/top.jpg']);
+    // x.jpg is dropped (the outer has /m/sub/x.jpg); y.jpg has no outer record and stays.
+    expect(paths(owned.get('s'))).toEqual(['/m/sub/y.jpg']);
+  });
+
+  it('keeps a file with the inner root when its owner has no record for it', () => {
+    const owned = ownedFiles([outer, inner], [file('m', '/m', 'top.jpg'), ...innerFiles]);
+    expect(paths(owned.get('s'))).toEqual(['/m/sub/x.jpg', '/m/sub/y.jpg']);
+  });
+
+  it('gives identical-path roots to the earliest in the folder order', () => {
+    const r1 = folder('r1', '/same');
+    const r2 = folder('r2', '/same');
+    const files = [file('r1', '/same', 'a.jpg'), file('r2', '/same', 'a.jpg')];
+    let owned = ownedFiles([r1, r2], files);
+    expect(owned.get('r1')).toHaveLength(1);
+    expect(owned.get('r2')).toHaveLength(0);
+    owned = ownedFiles([r2, r1], files);
+    expect(owned.get('r2')).toHaveLength(1);
+    expect(owned.get('r1')).toHaveLength(0);
+  });
+
+  it('keeps a case-differing pair distinct in both roots', () => {
+    const owned = ownedFiles(
+      [folder('u', '/A/B'), folder('l', '/a/b')],
+      [file('u', '/A/B', 'x.jpg'), file('l', '/a/b', 'x.jpg')],
+    );
+    expect(paths(owned.get('u'))).toEqual(['/A/B/x.jpg']);
+    expect(paths(owned.get('l'))).toEqual(['/a/b/x.jpg']);
+  });
+
+  it('ignores files whose folder has no record, and tolerates empty input', () => {
+    expect(ownedFiles([folder('a', '/a')], [file('zz', '/q', 'a.jpg')]).get('a')).toEqual([]);
+    expect(ownedFiles(undefined, undefined).size).toBe(0);
+  });
+
+  it('does not mutate its input', () => {
+    const folders = [outer, inner];
+    const files = [...outerFiles, ...innerFiles];
+    const before = JSON.stringify([folders, files]);
+    ownedFiles(folders, files);
+    expect(JSON.stringify([folders, files])).toBe(before);
+  });
+
+  it('holds each absolute path at most once across roots and loses none that buildTree shows', () => {
+    const walk = (nodes, out = []) => {
+      for (const n of nodes) {
+        if (n.type === 'file') out.push(n.path);
+        if (n.children) walk(n.children, out);
+      }
+      return out;
+    };
+    const cases = [
+      [[folder('a', '/a'), folder('b', '/a/b'), folder('c', '/a/b/c')], [
+        file('a', '/a', 'b/c/1.jpg'), file('b', '/a/b', 'c/1.jpg'), file('c', '/a/b/c', '1.jpg'),
+        file('b', '/a/b', 'c/2.jpg'), file('c', '/a/b/c', '2.jpg'),
+      ]],
+      [[folder('r1', '/same'), folder('r2', '/same')], [file('r1', '/same', 'a.jpg'), file('r2', '/same', 'a.jpg')]],
+      [[folder('u', '/A/B'), folder('l', '/a/b')], [file('u', '/A/B', 'x.jpg'), file('l', '/a/b', 'x.jpg')]],
+    ];
+    for (const [folders, files] of cases) {
+      const union = [...ownedFiles(folders, files).values()].flat().map((r) => r.path);
+      expect(new Set(union).size).toBe(union.length);
+      expect([...union].sort()).toEqual(walk(buildTree(folders, files)).sort());
+    }
+  });
+});
+
+describe('compareNames export', () => {
+  it('orders file2 before file10', () => {
+    expect(compareNames('file2', 'file10')).toBeLessThan(0);
+    expect(compareNames('file10', 'file2')).toBeGreaterThan(0);
+  });
+
+  it('breaks the tie between A and a deterministically (raw order, A first)', () => {
+    expect(compareNames('A', 'a')).toBeLessThan(0);
+    expect(compareNames('a', 'A')).toBeGreaterThan(0);
+    expect(compareNames('a', 'a')).toBe(0);
+  });
+});
+
+describe('buildTree output is unchanged by the ownedFiles extraction', () => {
+  // Fixtures and expected output captured from buildTree before the refactor.
+  const fixtures = {
+    nested: {
+      folders: [folder('a', '/a'), folder('b', '/a/b'), folder('c', '/a/b/c'), folder('z', '/z', true)],
+      files: [
+        file('a', '/a', 'top.jpg'), file('a', '/a', 'b/c/1.jpg'), file('a', '/a', 'b/x10.jpg'), file('a', '/a', 'b/x2.jpg'),
+        file('b', '/a/b', 'c/1.jpg'), file('b', '/a/b', 'c/2.jpg'), file('b', '/a/b', 'x2.jpg'),
+        file('c', '/a/b/c', '1.jpg'), file('c', '/a/b/c', '2.jpg'), file('c', '/a/b/c', '3.jpg'),
+        file('z', '/z', 'q/gone.jpg', { kind: 'audio' }),
+      ],
+    },
+    identical: {
+      folders: [folder('r1', '/same'), folder('r2', '/same'), { ...folder('r3', '/link'), resolvedPath: '/same' }],
+      files: [
+        file('r1', '/same', 'a.jpg'), file('r2', '/same', 'a.jpg'), file('r2', '/same', 'only2.jpg'),
+        file('r3', '/link', 'a.jpg'), file('r3', '/link', 'only3.jpg'), file('r1', '/same', 'd/A.jpg'), file('r1', '/same', 'd/a.jpg'),
+      ],
+    },
+    flat: {
+      folders: [folder('p', '/photos'), folder('q', '/music'), folder('e', '/empty')],
+      files: [
+        file('p', '/photos', 'IMG_10.jpg'), file('p', '/photos', 'IMG_2.jpg'), file('p', '/photos', 'sub/IMG_1.JPG'),
+        file('q', '/music', 'a.mp3', { kind: 'audio', extension: 'mp3' }), file('q', '/music', 'B.mp3', { kind: 'audio', extension: 'mp3' }),
+      ],
+    },
+  };
+  const before = {"nested":[{"type":"folder","id":"a:","folderId":"a","name":"a","path":"/a","relativePath":"","unavailable":false,"children":[{"type":"folder","id":"a:b","folderId":"a","name":"b","path":"/a/b","relativePath":"b","unavailable":false,"children":[{"type":"folder","id":"a:b/c","folderId":"a","name":"c","path":"/a/b/c","relativePath":"b/c","unavailable":false,"children":[{"type":"file","id":"a:b/c/1.jpg","folderId":"a","name":"1.jpg","path":"/a/b/c/1.jpg","relativePath":"b/c/1.jpg","unavailable":false,"kind":"image"}]},{"type":"file","id":"a:b/x2.jpg","folderId":"a","name":"x2.jpg","path":"/a/b/x2.jpg","relativePath":"b/x2.jpg","unavailable":false,"kind":"image"},{"type":"file","id":"a:b/x10.jpg","folderId":"a","name":"x10.jpg","path":"/a/b/x10.jpg","relativePath":"b/x10.jpg","unavailable":false,"kind":"image"}]},{"type":"file","id":"a:top.jpg","folderId":"a","name":"top.jpg","path":"/a/top.jpg","relativePath":"top.jpg","unavailable":false,"kind":"image"}]},{"type":"folder","id":"b:","folderId":"b","name":"b","path":"/a/b","relativePath":"","unavailable":false,"children":[{"type":"folder","id":"b:c","folderId":"b","name":"c","path":"/a/b/c","relativePath":"c","unavailable":false,"children":[{"type":"file","id":"b:c/2.jpg","folderId":"b","name":"2.jpg","path":"/a/b/c/2.jpg","relativePath":"c/2.jpg","unavailable":false,"kind":"image"}]}]},{"type":"folder","id":"c:","folderId":"c","name":"c","path":"/a/b/c","relativePath":"","unavailable":false,"children":[{"type":"file","id":"c:3.jpg","folderId":"c","name":"3.jpg","path":"/a/b/c/3.jpg","relativePath":"3.jpg","unavailable":false,"kind":"image"}]},{"type":"folder","id":"z:","folderId":"z","name":"z","path":"/z","relativePath":"","unavailable":true,"children":[{"type":"folder","id":"z:q","folderId":"z","name":"q","path":"/z/q","relativePath":"q","unavailable":true,"children":[{"type":"file","id":"z:q/gone.jpg","folderId":"z","name":"gone.jpg","path":"/z/q/gone.jpg","relativePath":"q/gone.jpg","unavailable":true,"kind":"audio"}]}]}],"identical":[{"type":"folder","id":"r3:","folderId":"r3","name":"link","path":"/link","relativePath":"","unavailable":false,"children":[{"type":"file","id":"r3:only3.jpg","folderId":"r3","name":"only3.jpg","path":"/link/only3.jpg","relativePath":"only3.jpg","unavailable":false,"kind":"image"}]},{"type":"folder","id":"r1:","folderId":"r1","name":"same","path":"/same","relativePath":"","unavailable":false,"children":[{"type":"folder","id":"r1:d","folderId":"r1","name":"d","path":"/same/d","relativePath":"d","unavailable":false,"children":[{"type":"file","id":"r1:d/A.jpg","folderId":"r1","name":"A.jpg","path":"/same/d/A.jpg","relativePath":"d/A.jpg","unavailable":false,"kind":"image"},{"type":"file","id":"r1:d/a.jpg","folderId":"r1","name":"a.jpg","path":"/same/d/a.jpg","relativePath":"d/a.jpg","unavailable":false,"kind":"image"}]},{"type":"file","id":"r1:a.jpg","folderId":"r1","name":"a.jpg","path":"/same/a.jpg","relativePath":"a.jpg","unavailable":false,"kind":"image"}]},{"type":"folder","id":"r2:","folderId":"r2","name":"same","path":"/same","relativePath":"","unavailable":false,"children":[{"type":"file","id":"r2:only2.jpg","folderId":"r2","name":"only2.jpg","path":"/same/only2.jpg","relativePath":"only2.jpg","unavailable":false,"kind":"image"}]}],"flat":[{"type":"folder","id":"e:","folderId":"e","name":"empty","path":"/empty","relativePath":"","unavailable":false,"children":[]},{"type":"folder","id":"q:","folderId":"q","name":"music","path":"/music","relativePath":"","unavailable":false,"children":[{"type":"file","id":"q:a.mp3","folderId":"q","name":"a.mp3","path":"/music/a.mp3","relativePath":"a.mp3","unavailable":false,"kind":"audio"},{"type":"file","id":"q:B.mp3","folderId":"q","name":"B.mp3","path":"/music/B.mp3","relativePath":"B.mp3","unavailable":false,"kind":"audio"}]},{"type":"folder","id":"p:","folderId":"p","name":"photos","path":"/photos","relativePath":"","unavailable":false,"children":[{"type":"folder","id":"p:sub","folderId":"p","name":"sub","path":"/photos/sub","relativePath":"sub","unavailable":false,"children":[{"type":"file","id":"p:sub/IMG_1.JPG","folderId":"p","name":"IMG_1.JPG","path":"/photos/sub/IMG_1.JPG","relativePath":"sub/IMG_1.JPG","unavailable":false,"kind":"image"}]},{"type":"file","id":"p:IMG_2.jpg","folderId":"p","name":"IMG_2.jpg","path":"/photos/IMG_2.jpg","relativePath":"IMG_2.jpg","unavailable":false,"kind":"image"},{"type":"file","id":"p:IMG_10.jpg","folderId":"p","name":"IMG_10.jpg","path":"/photos/IMG_10.jpg","relativePath":"IMG_10.jpg","unavailable":false,"kind":"image"}]}]};
+
+  for (const name of ['nested', 'identical', 'flat']) {
+    it(`gives the same tree for the ${name} fixture`, () => {
+      const out = buildTree(fixtures[name].folders, fixtures[name].files);
+      expect(JSON.parse(JSON.stringify(out))).toEqual(before[name]);
+    });
+  }
 });
