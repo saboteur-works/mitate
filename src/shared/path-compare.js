@@ -69,7 +69,14 @@
 
   // { same, inside, contains } describing how `a` relates to `b`.
   function compare(a, b) {
-    return { same: isSame(a, b), inside: isInside(a, b), contains: contains(a, b) };
+    const ka = keyOf(a);
+    const kb = keyOf(b);
+    if (ka === null || kb === null) return { same: false, inside: false, contains: false };
+    return {
+      same: ka.length === kb.length && isPrefix(ka, kb),
+      inside: ka.length > kb.length && isPrefix(kb, ka),
+      contains: kb.length > ka.length && isPrefix(ka, kb),
+    };
   }
 
   const PathCompare = { normalize, isSame, isInside, contains, compare };

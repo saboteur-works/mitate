@@ -62,7 +62,7 @@
  *   of its folders. addFolder refuses inside and identical paths (inside wins
  *   when a candidate is inside one folder and contains another, which only
  *   legacy data allows). Replacing contained folders uses the remove-folder
- *   cleanup (replaceFolderIndex(id, []) then removeFolder(id)), touches only
+ *   cleanup (storage.removeFolder, which drops the index too), touches only
  *   this collection's records, and does not apply the last-folder refusal.
  *   createCollection drops nested picks instead of asking.
  * - FR-18: createCollection awaits every scan first, then stores the
@@ -99,7 +99,9 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createInFlightGuard } = require('./in-flight.js');
-const { findOverlaps, describeRefusal, describeReplace, dropNested } = require('./overlap.js');
+const {
+  findOverlaps, describeRefusal, describeReplace, dropNested, resolvePath, NO_FILES_TOUCHED,
+} = require('./overlap.js');
 const { defaultScan, checkReadableDirectory, isReadableDirectory, scanFolder } = require('./folder-access.js');
 
 async function assertDirectory(dir) {
@@ -142,15 +144,8 @@ function contains(dir, file) {
 // derived from the folder record, never read from the stored file record.
 // Folders come back in collection.folderIds order; a folder the list lacks (a
 // stale v1 folderIds) follows the listed ones, by id. Each folder carries a
-// derived resolvedPath (fs.realpathSync, or path when it cannot be resolved),
-// never stored. Sync realpath on a handful of roots is cheap.
-function resolvePathOrSelf(p) {
-  try {
-    return fs.realpathSync(p);
-  } catch {
-    return p;
-  }
-}
+// derived resolvedPath (overlap.js resolvePath), never stored. An unavailable
+// folder is not resolved, so a dead volume is not touched again here.
 
 function orderedFolders(collection, stored) {
   const ids = Array.isArray(collection.folderIds) ? collection.folderIds : [];
@@ -171,7 +166,7 @@ function collectionView(storage, collectionId) {
   const collection = storage.getCollection(collectionId);
   if (!collection) return null;
   const folders = orderedFolders(collection, storage.listFolders(collectionId))
-    .map((f) => ({ ...f, resolvedPath: resolvePathOrSelf(f.path) }));
+    .map((f) => ({ ...f, resolvedPath: f.unavailable ? f.path : resolvePath(f.path) }));
   const files = folders.flatMap((folder) =>
     storage.getIndex({ folderId: folder.id }).map((f) => {
       const { unavailable, ...rest } = f;
@@ -303,7 +298,7 @@ function createCollectionService({
     return withGuard(collectionId, 'rename', () => {
       const collection = requireCollection(collectionId);
       if (typeof name !== 'string' || name.trim() === '') throw new Error('Collection name must not be empty');
-      storage.transaction(() => storage.putCollection({ ...collection, name: name.trim() }));
+      storage.putCollection({ ...collection, name: name.trim() });
       return collectionView(storage, collectionId);
     });
   }
@@ -321,10 +316,7 @@ function createCollectionService({
         err.code = 'LAST_FOLDER';
         throw err;
       }
-      storage.transaction(() => {
-        storage.replaceFolderIndex(folderId, []);
-        storage.removeFolder(folderId);
-      });
+      storage.removeFolder(folderId);
       return collectionView(storage, collectionId);
     });
   }
@@ -338,12 +330,11 @@ function createCollectionService({
       const confirmed = typeof confirm === 'function' && (await confirm({
         title: 'Delete collection',
         message: `Delete the collection "${collection.name}"?`,
-        detail: 'Only the collection and its index are removed from Mitate. '
-          + 'No files on disk are touched, deleted or moved.',
+        detail: `Only the collection and its index are removed from Mitate. ${NO_FILES_TOUCHED}`,
         confirmLabel: 'Delete collection',
       }));
       if (confirmed !== true) return { canceled: true };
-      storage.transaction(() => storage.removeCollection(collectionId));
+      storage.removeCollection(collectionId);
       return { deleted: true };
     });
   }
@@ -356,7 +347,7 @@ function createCollectionService({
   // transaction; otherwise nothing is scanned or stored.
   async function addFolder(collectionId, dirPath) {
     return withGuard(collectionId, 'add-folder', async () => {
-      const collection = requireCollection(collectionId);
+      requireCollection(collectionId);
       const [dir] = await validateDirectories([dirPath]);
       const folders = storage.listFolders(collectionId);
       const overlaps = findOverlaps(dir, folders.map((f) => f.path));
@@ -379,16 +370,11 @@ function createCollectionService({
       }
       const scanned = await scanFolder(scan, dir);
       const folderId = idGenerator();
-      const removedIds = new Set(replaced.map((f) => f.id));
-      const folderIds = [...(collection.folderIds || []).filter((id) => id !== folderId && !removedIds.has(id)), folderId];
       storage.transaction(() => {
         storage.putFolder({ id: folderId, collectionId, path: dir, unavailable: scanned.unavailable });
         storage.replaceFolderIndex(folderId, scanned.records);
-        for (const f of replaced) {
-          storage.replaceFolderIndex(f.id, []);
-          storage.removeFolder(f.id);
-        }
-        storage.putCollection({ ...collection, folderIds });
+        // putFolder appends to folderIds and removeFolder drops the id, its index and access data.
+        for (const f of replaced) storage.removeFolder(f.id);
       });
       const view = collectionView(storage, collectionId);
       return replace ? { ...view, replaced: replaced.map((f) => f.path) } : view;

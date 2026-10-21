@@ -1,17 +1,23 @@
 'use strict';
 
 /*
- * Management panel for the selected collection (FR-2: Delete collection, confirmed in the main process; FR-1: rename, FR-3: folder list and
- * Remove folder, no confirmation; FR-7: Add folder through the folder picker, one collections:addFolder
- * call per picked folder, in pick order, the collection marked busy meanwhile; FR-12: all four controls are disabled while the managed collection is busy, following
- * 'collection-busy-changed'). Removing a folder of the shown collection refreshes the tree
- * in place with TreeView.update (the selection survives only if its node still exists). It manages the
- * collection that 'collection-selected' last announced and hides itself when
- * the announcement carries collectionId null. After a successful action it
- * dispatches 'collections-changed' on document (detail.collectionId) so the
- * collection list can refresh. A refused add (FOLDER_COVERED) is shown in manage-error; a confirmed
- * add that replaced contained folders is reported in manage-notice (FR-8). The main process validates the name; this file
- * only shows what it answers.
+ * Management panel for the selected collection.
+ * - FR-1: rename. The main process validates the name; this file only shows
+ *   what it answers.
+ * - FR-2: Delete collection, confirmed in the main process.
+ * - FR-3: folder list and Remove folder, no confirmation. Removing a folder of
+ *   the shown collection refreshes the tree in place with TreeView.update (the
+ *   selection survives only if its node still exists).
+ * - FR-7: Add folder through the folder picker, one collections:addFolder call
+ *   per picked folder, in pick order, the collection marked busy meanwhile.
+ * - FR-8: a refused add (FOLDER_COVERED) is shown in manage-error; an add that
+ *   replaced contained folders is reported in manage-notice.
+ * - FR-12: all four controls are disabled while the managed collection is busy,
+ *   following 'collection-busy-changed'.
+ * It manages the collection that 'collection-selected' last announced and hides
+ * itself when the announcement carries collectionId null. After a successful
+ * action it dispatches 'collections-changed' on document (detail.collectionId)
+ * so the collection list can refresh.
  */
 (function () {
   const api = window.mediaOrganizer;
@@ -23,6 +29,7 @@
   const errorBox = document.querySelector('[data-testid="manage-error"]');
   const noticeBox = document.querySelector('[data-testid="manage-notice"]');
   const folderList = document.querySelector('[data-testid="manage-folders"]');
+  const messageOf = (err) => (err && err.message ? err.message : String(err));
 
   let managedId = null;
   let loadToken = 0;
@@ -54,7 +61,8 @@
     renameButton.disabled = !active || renaming || busy;
     addButton.disabled = !active || adding || busy;
     deleteButton.disabled = !active || deleting || busy;
-    for (const button of folderList.querySelectorAll('button')) button.disabled = !active || removing || busy;
+    const removeOff = !active || removing || busy;
+    for (const button of folderList.querySelectorAll('button')) button.disabled = removeOff;
   }
 
   // folders: [{ id, path, unavailable }] as in the summaries and in the view.
@@ -117,7 +125,7 @@
       showView(collectionId, result.view);
       document.dispatchEvent(new CustomEvent('collections-changed', { detail: { collectionId } }));
     } catch (err) {
-      showError(err && err.message ? err.message : String(err));
+      showError(messageOf(err));
     } finally {
       removing = false;
       sync();
@@ -161,14 +169,16 @@
           changed = true;
           showView(collectionId, result.view);
           const replaced = Array.isArray(result.replaced) ? result.replaced : [];
-          if (replaced.length > 0) notices.push(`${dirPath} replaced ${replaced.join(', ')}.`);
+          if (replaced.length > 0) {
+            notices.push(`${dirPath} replaced ${replaced.join(', ')}.`);
+          }
         }
       } finally {
         showNotice(notices.join(' '));
         if (changed) document.dispatchEvent(new CustomEvent('collections-changed', { detail: { collectionId } }));
       }
     } catch (err) {
-      showError(err && err.message ? err.message : String(err));
+      showError(messageOf(err));
     } finally {
       if (began) window.CollectionBusy.end(collectionId);
       adding = false;
@@ -189,7 +199,7 @@
       if (managedId === collectionId) renameInput.value = result.summary.name;
       document.dispatchEvent(new CustomEvent('collections-changed', { detail: { collectionId } }));
     } catch (err) {
-      showError(err && err.message ? err.message : String(err));
+      showError(messageOf(err));
     } finally {
       renaming = false;
       sync();
@@ -213,7 +223,7 @@
       document.dispatchEvent(new CustomEvent('collection-deleted', { detail: { collectionId } }));
       document.dispatchEvent(new CustomEvent('collections-changed', { detail: { collectionId } }));
     } catch (err) {
-      showError(err && err.message ? err.message : String(err));
+      showError(messageOf(err));
     } finally {
       deleting = false;
       sync();

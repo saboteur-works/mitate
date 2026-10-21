@@ -40,6 +40,11 @@ function resolveWith(realpath, p) {
   }
 }
 
+// realpath of p, or path.resolve(p) when it cannot be resolved.
+function resolvePath(p, realpath = fs.realpathSync) {
+  return resolveWith(realpath, p);
+}
+
 function findOverlaps(candidatePath, existingPaths, { realpath = fs.realpathSync } = {}) {
   const candidate = resolveWith(realpath, candidatePath);
   const coveredBy = [];
@@ -116,4 +121,6 @@ function describeDropped(dropped) {
   return `Left out because another picked folder already covers ${dropped.length === 1 ? 'it' : 'them'}: ${lines.join('; ')}.`;
 }
 
-module.exports = { findOverlaps, describeRefusal, describeReplace, dropNested, describeDropped };
+module.exports = {
+  findOverlaps, describeRefusal, describeReplace, dropNested, describeDropped, resolvePath, NO_FILES_TOUCHED,
+};

@@ -8,8 +8,9 @@
  *     rescanCollection(collectionId)
  *       -> Promise<{collection, folders, files, summary: {rescanned, skipped}}>
  *          Rejects with an Error whose `code === RESCAN_IN_PROGRESS` when a rescan
- *          of the same collection is already running (see below), and with COLLECTION_BUSY when another operation (e.g.
- *          'add-folder') holds the collection in the shared in-flight guard.
+ *          of the same collection is already running (see below), and with
+ *          COLLECTION_BUSY when another operation (e.g. 'add-folder') holds the
+ *          collection in the shared in-flight guard.
  *     `guard` is optional; without one the service creates its own.
  *
  * Decisions:

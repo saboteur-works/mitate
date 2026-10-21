@@ -6,12 +6,10 @@
  *
  *   folders:pick        -> { canceled, paths }   native folder picker; directories
  *                          only (openDirectory + multiSelections, never openFile)
- *   collections:create  (name, directories) -> { ok: true, summary: { id, name, folderCount }, dropped }
+ *   collections:create  (name, directories) -> { ok: true, summary: { id, name, folderCount }, dropped, notice }
  *                          | { ok: false, error }; the tree is loaded by collections:getView.
  *                          dropped = [{ path, coveredBy }] lists picks inside another pick that
- *                          were left out, [] when none. The service no longer cancels for overlap;
- *                          { ok: true, canceled: true } is still passed through so a future
- *                          cancel does not break callers.
+ *                          were left out, [] when none; notice is their text (describeDropped), or null.
  *   collections:rename  (collectionId, name) -> { ok: true, summary: { id, name, folderCount } }
  *   collections:delete  (collectionId) -> { ok: true, deleted: true } | { ok: true, canceled: true }
  *                          the service asks for confirmation (native dialog); no files on disk are touched.
@@ -51,6 +49,7 @@
  */
 
 const { messageOf } = require('./message-of.js');
+const { describeDropped } = require('./collections/overlap.js');
 
 const CHANNELS = {
   pickFolders: 'folders:pick',
@@ -88,12 +87,12 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, revealFil
     return { canceled: false, paths: [...result.filePaths] };
   });
 
+  const summaryOf = ({ collection, folders }) => ({ id: collection.id, name: collection.name, folderCount: folders.length });
+
   handle(CHANNELS.createCollection, (_event, name, directories) =>
     guard(async () => {
       const created = await service.createCollection(name, directories);
-      if (created.canceled) return { canceled: true };
-      const { collection, folders } = created;
-      return { summary: { id: collection.id, name: collection.name, folderCount: folders.length }, dropped: created.dropped || [] };
+      return { summary: summaryOf(created), dropped: created.dropped, notice: describeDropped(created.dropped) };
     }));
 
   handle(CHANNELS.listCollections, () =>
@@ -116,7 +115,6 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, revealFil
   const requireStrings = (...values) => {
     if (!values.every((v) => typeof v === 'string')) throw new Error('Invalid arguments');
   };
-  const summaryOf = ({ collection, folders }) => ({ id: collection.id, name: collection.name, folderCount: folders.length });
 
   handle(CHANNELS.renameCollection, (_event, collectionId, name) =>
     guard(async () => {

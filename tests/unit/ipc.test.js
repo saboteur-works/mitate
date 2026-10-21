@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const { registerIpc, CHANNELS } = require('../../src/main/ipc.js');
+const { describeDropped } = require('../../src/main/collections/overlap.js');
 
 function setup({ dialogResult = { canceled: false, filePaths: ['/a', '/b'] }, service, rescanService, revealFile } = {}) {
   const handlers = new Map();
@@ -185,12 +186,11 @@ describe('collection management channels', () => {
     expect(service.deleteCollection).toHaveBeenCalledWith('c1');
   });
 
-  it('passes a service cancel through for delete, add folder and create', async () => {
+  it('passes a service cancel through for delete and add folder', async () => {
     const canceled = async () => ({ canceled: true });
     const { invoke } = mk({ deleteCollection: canceled, addFolder: canceled });
     expect(await invoke(CHANNELS.deleteCollection, 'c1')).toEqual({ ok: true, canceled: true });
     expect(await invoke(CHANNELS.addFolder, 'c1', '/d')).toEqual({ ok: true, canceled: true });
-    expect(await invoke(CHANNELS.createCollection, 'n', ['/d'])).toEqual({ ok: true, canceled: true });
   });
 
   it('returns replaced beside the view for addFolder, [] when nothing was replaced', async () => {
@@ -206,15 +206,15 @@ describe('collection management channels', () => {
     expect(await invoke(CHANNELS.addFolder, 'c1', '/m/a/b')).toEqual({ ok: false, error: 'already covered by /m/a', code: 'FOLDER_COVERED' });
   });
 
-  it('returns summary and dropped for create, dropped is [] when no pick was dropped', async () => {
+  it('returns summary, dropped and the dropped notice for create; notice is null when nothing was dropped', async () => {
     const dropped = [{ path: '/m/a/b', coveredBy: '/m/a' }];
     const created = (extra) => async () => ({ collection: { id: 'c9', name: 'N' }, folders: [{ path: '/m/a' }], files: [], ...extra });
     const withDrops = mk({ createCollection: created({ dropped }) });
     expect(await withDrops.invoke(CHANNELS.createCollection, 'N', ['/m/a', '/m/a/b']))
-      .toEqual({ ok: true, summary: { id: 'c9', name: 'N', folderCount: 1 }, dropped });
-    const none = mk({ createCollection: created({}) });
+      .toEqual({ ok: true, summary: { id: 'c9', name: 'N', folderCount: 1 }, dropped, notice: describeDropped(dropped) });
+    const none = mk({ createCollection: created({ dropped: [] }) });
     expect(await none.invoke(CHANNELS.createCollection, 'N', ['/m/a']))
-      .toEqual({ ok: true, summary: { id: 'c9', name: 'N', folderCount: 1 }, dropped: [] });
+      .toEqual({ ok: true, summary: { id: 'c9', name: 'N', folderCount: 1 }, dropped: [], notice: null });
   });
 
   it('lists replaced, dropped and FOLDER_COVERED in the header comment of ipc.js', () => {

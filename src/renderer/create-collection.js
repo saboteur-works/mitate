@@ -108,17 +108,12 @@
     try {
       const result = await api.createCollection(nameInput.value, folders);
       if (!result.ok) return showError(result.error);
-      // A cancel pass-through: nothing was created, keep the form as it was.
-      if (result.canceled) return;
-      const dropped = Array.isArray(result.dropped) ? result.dropped : [];
       folders = [];
       nameInput.value = '';
       renderFolders();
       await refreshCollections();
-      if (dropped.length > 0) {
-        const lines = dropped.map((d) => `${d.path} (covered by ${d.coveredBy})`);
-        showNotice(`Left out because another picked folder already covers ${dropped.length === 1 ? 'it' : 'them'}: ${lines.join('; ')}.`);
-      }
+      // FR-8: nested picks that were left out; the text comes from the main process.
+      showNotice(result.notice || '');
     } catch (err) {
       showError(messageOf(err));
     } finally {
