@@ -44,7 +44,8 @@ const pathCompare =
  *   }
  *
  * Node identity: `path` is NOT an identity, because roots may overlap (roots
- * /a and /a/b are both kept), so the root /a/b and the subfolder b under root
+ * /a and /a/b are both kept; since the 2026-10-21 overlap rules this can only occur in
+ * collections stored before them, as adding or creating no longer builds it), so the root /a/b and the subfolder b under root
  * /a have the same absolute path. Every node therefore has an `id` built as
  * `<rootFolderId>:<relativePath>` (the root's folder record id, a colon, and
  * the node's relativePath; a root has relativePath '' so its id is

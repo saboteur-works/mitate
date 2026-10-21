@@ -13,7 +13,8 @@
  * Decisions:
  * - Node identity is node.id (unique per root, see tree-model.js): expansion state
  *   and the data-node-id attribute use it. data-path (absolute path) is display only
- *   and can be shared by rows of overlapping roots.
+ *   and can be shared by rows of overlapping roots (only in collections stored before the
+ *   2026-10-21 overlap rules, which refuse, replace or drop nested folders).
  * - Root folders start COLLAPSED; click a folder row to expand or collapse it.
  *   (Rows are only materialized for visible entries, so expanding a root with
  *   tens of thousands of files is still cheap in the DOM.)
