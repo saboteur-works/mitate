@@ -2,7 +2,7 @@
 
 A read-only desktop lens over folders you already have. You group folders into named collections, and the app indexes every supported media file inside them, however deeply nested, and shows the folder tree. It never moves, renames, edits or deletes a file. See [docs/concept.md](docs/concept.md) for the full concept.
 
-Current state: Feature 1, "index a folder collection and browse its tree" ([spec](specs/features/collection-index-tree.md)), Feature 2, "File location and Reveal in Finder" ([spec](specs/features/location-reveal.md)), and Feature 3, "Manage and switch between collections" ([spec](specs/features/collection-management.md)). It is an Electron app (Electron 44, macOS first) with:
+Current state: Feature 1, "index a folder collection and browse its tree" ([spec](specs/features/collection-index-tree.md)), Feature 2, "File location and Reveal in Finder" ([spec](specs/features/location-reveal.md)), Feature 3, "Manage and switch between collections" ([spec](specs/features/collection-management.md)), and Feature 4, "Browse by media type" ([spec](specs/features/type-views.md)). It is an Electron app (Electron 44, macOS first) with:
 
 - create a collection from folders chosen in a directory-only picker
 - folder discovery of supported media files, run in a worker thread
@@ -16,6 +16,7 @@ Current state: Feature 1, "index a folder collection and browse its tree" ([spec
 - a file reachable through nested or identical folders of one collection appears once in the tree (a safety net for collections stored before these rules, with no migration)
 - the same folder can be in several collections, each with its own folder record and index
 - while a collection's scan runs, its management controls are disabled and the main process refuses them
+- browse by media type: Images, Audio, Video and Documents tabs next to the Tree, each a virtualized list of every file of that kind in the selected collection (name and folder, in natural order, each file once), with selection by click or keyboard, the path and Reveal in Finder as in the tree, and the same read-only guarantee; the lists are built in the renderer from the data the window already holds, so opening a tab scans nothing and writes nothing (see [Type views](#type-views))
 
 ## Install
 
@@ -69,15 +70,15 @@ The tests launch the app through `tests/support/background-main.js` (the path is
 | Path | Contents |
 | --- | --- |
 | `src/main/` | Electron main process: `main.js`, `startup.js`, `preload.js`, `ipc.js`, and the `collections/`, `discovery/`, `registry/` and `storage/` modules |
-| `src/renderer/` | Renderer: `index.html`, `styles.css`, create-collection UI, tree view, rescan button, collection management panel |
-| `src/shared/` | Code shared by main and renderer (`tree-model.js`) |
+| `src/renderer/` | Renderer: `index.html`, `styles.css`, create-collection UI, tree view, view tabs, list view and type view controller, rescan button, collection management panel |
+| `src/shared/` | Code shared by main and renderer (`tree-model.js`, `type-list.js`, `type-list-cache.js`, `list-window.js`, `tabs-model.js`) |
 | `tools/readonly-check/` | Reusable read-only check (see below) |
 | `tools/atime-measurement/` | Script that records whether a plain `cat` read changes a file's access time |
 | `tools/store-scale/` | Script that measures the JSON store at 50,000, 200,000 and 500,000 file records (see below) |
 | `tools/scan-speed/` | Scripts that measure scan wall time and peak RSS (see below) |
 | `tools/format-probe/` | Format-support probes behind [docs/research/format-support.md](docs/research/format-support.md) |
 | `tests/unit/`, `tests/e2e/` | Vitest and Playwright tests |
-| `tests/support/` | Test helpers, including the fixture-tree builder (`fixture-tree.js`), the background Electron entry (`background-main.js`, `app-entry.js`), the e2e app launcher and helpers (`e2e-app.js`), the IPC handler wrapper used by e2e tests (`ipc-wrap.js`), `counting-fs.js`, `scan-hold.js` (holds one scan worker's events in the main process for busy-state tests) and the `dialog.showMessageBox` stub in `background-main.js` (see [Collection management](#collection-management)) |
+| `tests/support/` | Test helpers, including the fixture-tree builder (`fixture-tree.js`), the background Electron entry (`background-main.js`, `app-entry.js`), the e2e app launcher and helpers (`e2e-app.js`), the IPC handler wrapper used by e2e tests (`ipc-wrap.js`), the type-view helpers (`type-views-ui.js`, `type-list-hooks.js`, `large-fixture.js`, the 10,000-file generator), `counting-fs.js`, `scan-hold.js` (holds one scan worker's events in the main process for busy-state tests) and the `dialog.showMessageBox` stub in `background-main.js` (see [Collection management](#collection-management)) |
 | `docs/` | Concept, research and measurement records |
 | `specs/` | Product and feature specs |
 
@@ -113,6 +114,16 @@ The same folder may be in several collections. Each collection keeps its own fol
 While a collection's rescan or add-folder scan runs, its rename, add, remove and delete controls are disabled and the main process refuses them with the error code `COLLECTION_BUSY`.
 
 Test helpers: `tests/support/background-main.js` replaces `dialog.showMessageBox` so no real dialog is shown. `stubConfirm(app, [bool...])` (from `tests/support/e2e-app.js`) sets the answers in order (true confirms); the default answer is Cancel. `confirmCalls(app)` returns the recorded calls. `tests/support/scan-hold.js` exports `holdNextScan(app)`, which holds the next scan worker's events in the main process until released, so a test can act while a scan is in flight. An e2e read-only check around every management flow (`tests/e2e/management-readonly.spec.js`) reported no differences, including 0 access-time differences in those runs.
+
+## Type views
+
+With a collection selected, a row of tabs (Tree, Images, Audio, Video, Documents) switches the view area between the folder tree and four flat lists. Each list holds every file of that kind from every folder of the collection, one row per file: the name, with the folder (the path relative to the collection folder, or the folder's name for a top-level file) dimmed beside it. Rows are in natural name order (`img2` before `img10`, case ignored) and equal names are ordered by absolute path. A file reachable through nested or identical folders of one collection appears once, the same rule the tree uses. A file of an unavailable folder is listed with the "unavailable" label. A kind with no files shows "No <kind> files in this collection". Files with an unsupported extension are in no list.
+
+- **Selection and Reveal**: click a row, or move with ArrowUp and ArrowDown and press Enter or Space. Home and End jump to the first and last row. The path and the Reveal in Finder button work as for a tree selection. Switching tab, or collection, clears the selection; a rescan keeps it if the file is still listed.
+- **Large lists**: only the rows in view are in the page, so the page does not hold one element per file.
+- **Refresh and cost**: a list is built from the collection data the window already holds, on the first open of its tab after a load, rescan, add-folder or remove-folder, and cached until the next such change. Opening a tab scans nothing and writes nothing, and the last view used is not remembered between launches.
+- **Read-only**: browsing by type does not change anything in the collection's folders. `tests/e2e/type-views-readonly.spec.js` runs the read-only check around opening all four lists, scrolling, selecting and revealing.
+- **Tests**: `tests/e2e/type-views*.spec.js`, plus `tests/support/large-fixture.js` for a generated fixture of 10,000 files and `tests/support/type-list-hooks.js`, which counts list builds from outside the app.
 
 ## Read-only check
 
