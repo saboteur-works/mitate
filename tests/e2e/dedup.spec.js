@@ -1,13 +1,14 @@
 'use strict';
 
 /*
- * One appearance of a file across overlapping roots e2e (Feature 3, Task 26; FR-9, FR-13).
- * A collection over one fixture folder is written to <userDataDir>/store.json before launch with
- * the real service + scanner; the overlapping folder is then added through the panel
- * (stubFolderPicker + stubConfirm true). The overlap rule itself is covered for a seeded store in
- * file-selection.spec.js; this spec adds what that one does not: the three overlap shapes built
- * through the UI, selection and the detail area, persistence of the single appearance across
- * Rescan, relaunch and a further add, and removing the outer root.
+ * One appearance of a file across nested roots in legacy data e2e (Feature 3, Tasks 26 and 37; FR-9,
+ * FR-13). Since 2026-10-21 the UI no longer builds nested or identical roots (inside and identical
+ * adds are refused, a containing add replaces, creation drops nested picks), so these shapes are
+ * seeded into <userDataDir>/store.json before launch as legacy data (two folder records of one
+ * collection, written with openStorage over the real scanner output). The tree-model de-duplication
+ * stays as the safety net: each file shows once, under the owning root, and the other root row is
+ * still there. No migration rewrites the store. The last test builds the same shapes through the
+ * panel and the creation screen and asserts that the store ends without nesting.
  *
  * The tree is virtualized, so rows are addressed by node id (<rootFolderId>:<relativePath>) and
  * only the roots and folders on the way to one file are expanded. Store reads happen between UI
@@ -53,7 +54,7 @@ function storeSnapshot(userDataDir, collectionId) {
 }
 
 /*
- * c.first / c.pick: the existing folder and the one added through the panel. Roots are the first and
+ * c.first / c.pick: the first and the second folder seeded into the collection. Roots are the first and
  * second folder ids; outer / inner say which of them owns the shared file. outerIndex is the panel
  * position of the owner. relInner is the shared file's relative path under the inner root, relOuter
  * under the outer one.
@@ -87,6 +88,30 @@ async function expectOneAppearance(window, ctx, ownerId, otherId, rel) {
   await expect(byId(window, `${otherId}:`)).toHaveCount(1);
 }
 
+// Writes a collection with two folder records, `firstPath` then `secondPath` in folderIds, for the
+// (possibly nested or identical) paths. Records and index entries come from the real scanner via
+// a throwaway collection per folder; the ids are fresh, so the store looks like one written by
+// Feature 1 or by the earlier confirm-and-keep-both behaviour.
+async function seedLegacy(userDataDir, firstPath, secondPath) {
+  const storage = storeOf(userDataDir);
+  const service = createCollectionService({ storage });
+  const copies = [];
+  for (const dirPath of [firstPath, secondPath]) {
+    const tmp = await service.createCollection('tmp', [dirPath]);
+    const [folder] = storage.listFolders(tmp.collection.id);
+    copies.push({ path: dirPath, records: storage.getIndex({ folderId: folder.id }) });
+    storage.removeCollection(tmp.collection.id);
+  }
+  const collectionId = 'legacy-collection';
+  storage.putCollection({ id: collectionId, name: 'Dedup', folderIds: [], createdAt: new Date().toISOString() });
+  copies.forEach((copy, i) => {
+    const id = `legacy-folder-${i + 1}`;
+    storage.putFolder({ id, collectionId, path: copy.path, unavailable: false });
+    storage.replaceFolderIndex(id, copy.records.map(({ folderId, collectionId: _c, ...rest }) => rest));
+  });
+  return collectionId;
+}
+
 async function runDedupCase(c) {
   const userDataDir = newUserDataDir(`dedup-${c.label}`);
   const fx = buildFixtureTree();
@@ -95,23 +120,18 @@ async function runDedupCase(c) {
   const sharedPath = `${fx.root}/${FILE}`;
   let session;
   try {
-    const storage = storeOf(userDataDir);
-    const created = await createCollectionService({ storage }).createCollection('Dedup', [c.first(fx.root)]);
-    const collectionId = created.collection.id;
+    const collectionId = await seedLegacy(userDataDir, c.first(fx.root), c.pick(fx.root));
+    const seeded = storeSnapshot(userDataDir, collectionId);
+    const storeBytes = fs.readFileSync(`${userDataDir}/store.json`);
 
     session = await launchApp(userDataDir);
     let { app, window } = session;
     await selectOnlyCollection(window);
-
-    // Add the overlapping folder through the panel, confirming the overlap.
-    await stubFolderPicker(app, [c.pick(fx.root)]);
-    await stubConfirm(app, [true]);
-    await window.getByTestId('add-folder-button').click();
-    await expect.poll(async () => (await confirmCalls(app)).length, { timeout: 30000 }).toBe(1);
     await expect(window.getByTestId('manage-folder')).toHaveCount(2, { timeout: 30000 });
-    await expect(window.getByTestId('add-folder-button')).toBeEnabled({ timeout: 30000 });
 
-    const ids = storeSnapshot(userDataDir, collectionId).folderIds;
+    // Launching and building the tree changed nothing in the store (no migration, no write).
+    expect(fs.readFileSync(`${userDataDir}/store.json`).equals(storeBytes)).toBe(true);
+    const ids = seeded.folderIds;
     expect(ids).toHaveLength(2);
     const outerId = ids[c.outerIndex];
     const innerId = ids[1 - c.outerIndex];
@@ -120,6 +140,7 @@ async function runDedupCase(c) {
     await expectOneAppearance(window, ctx, outerId, innerId, c.relOuter);
     // Nothing is stored for the dedup: both roots keep their own index records for the file.
     const withBoth = storeSnapshot(userDataDir, collectionId);
+    expect(withBoth).toEqual(seeded);
     expect(withBoth.index.filter((r) => r.endsWith(` ${sharedPath}`))).toHaveLength(2);
 
     // Clicking the file selects exactly one row and the detail shows the path once.
@@ -132,6 +153,9 @@ async function runDedupCase(c) {
     await window.getByTestId('rescan').click();
     await expect(window.getByTestId('rescan-status')).toContainText('Rescanned 2 folders', { timeout: 30000 });
     await expectOneAppearance(window, ctx, outerId, innerId, c.relOuter);
+    const rescanned = storeSnapshot(userDataDir, collectionId);
+    expect(rescanned.folderIds).toEqual(seeded.folderIds);
+    expect(rescanned.folders).toEqual(seeded.folders);
 
     // Adding an unrelated folder does not change it.
     await stubFolderPicker(app, [other.root]);
@@ -139,7 +163,7 @@ async function runDedupCase(c) {
     await window.getByTestId('add-folder-button').click();
     await expect(window.getByTestId('manage-folder')).toHaveCount(3, { timeout: 30000 });
     await expect(window.getByTestId('add-folder-button')).toBeEnabled({ timeout: 30000 });
-    expect(await confirmCalls(app)).toHaveLength(1);
+    expect(await confirmCalls(app)).toEqual([]);
     await expectOneAppearance(window, ctx, outerId, innerId, c.relOuter);
 
     // Relaunch: the same single appearance from the stored data.
@@ -196,6 +220,7 @@ async function runDedupCase(c) {
     expect(after.folders).toEqual(before.folders.filter((f) => !f.startsWith(`${outerId} `)));
     expect(after.index).toEqual(before.index.filter((r) => !r.startsWith(`${outerId} `)));
     expect(after.index.filter((r) => r.endsWith(` ${sharedPath}`))).toHaveLength(1);
+    expect(after.folders).toHaveLength(2);
   } finally {
     if (session) await session.app.close().catch(() => {});
     cleanupFixtureTree(fx.root);
@@ -204,14 +229,70 @@ async function runDedupCase(c) {
   }
 }
 
-test('inside: a root and its subfolder added with confirm show each file once, under the outer root', async () => {
+test('inside (legacy): a root and its subfolder show each file once, under the outer root', async () => {
   await runDedupCase(CASES.inside);
 });
 
-test('contains: the subfolder first and then its parent show the same single appearance, under the parent', async () => {
+test('contains (legacy): the subfolder first and then its parent show the same single appearance, under the parent', async () => {
   await runDedupCase(CASES.contains);
 });
 
-test('identical: the same path added twice shows each file once, under the earlier-added root', async () => {
+test('identical (legacy): the same path twice shows each file once, under the earlier root in folderIds', async () => {
   await runDedupCase(CASES.identical);
+});
+
+test('UI: the panel and the creation screen no longer build nested or identical roots', async () => {
+  const userDataDir = newUserDataDir('dedup-ui');
+  const fx = buildFixtureTree();
+  const inner = `${fx.root}/Photos`;
+  let session;
+  try {
+    const service = createCollectionService({ storage: storeOf(userDataDir) });
+    await service.createCollection('Outer', [fx.root]);
+
+    session = await launchApp(userDataDir);
+    const { app, window } = session;
+    const byId = (id) => window.getByTestId(id);
+    await selectOnlyCollection(window);
+
+    // Inside and identical adds are refused.
+    for (const pick of [inner, fx.root]) {
+      await stubFolderPicker(app, [pick]);
+      await byId('add-folder-button').click();
+      await expect(byId('manage-error')).toBeVisible({ timeout: 30000 });
+      await expect(byId('add-folder-button')).toBeEnabled({ timeout: 30000 });
+      await expect(byId('manage-folder-path')).toHaveText([fx.root]);
+    }
+
+    // Creation drops the nested pick.
+    await stubFolderPicker(app, [inner, fx.root]);
+    await byId('add-folder').click();
+    await byId('collection-name').fill('Created');
+    await byId('create-collection').click();
+    await expect(byId('collection-item')).toHaveCount(2, { timeout: 30000 });
+    await expect(byId('create-notice')).toBeVisible();
+
+    // A containing add replaces: a collection holding the subfolder gets its parent.
+    await stubFolderPicker(app, [inner]);
+    await byId('add-folder').click();
+    await byId('collection-name').fill('Inner');
+    await byId('create-collection').click();
+    await expect(byId('collection-item')).toHaveCount(3, { timeout: 30000 });
+    await byId('collection-item').filter({ hasText: 'Inner' }).click();
+    await expect(byId('manage-folder-path')).toHaveText([inner], { timeout: 30000 });
+    await stubFolderPicker(app, [fx.root]);
+    await stubConfirm(app, [true]);
+    await byId('add-folder-button').click();
+    await expect(byId('manage-folder-path')).toHaveText([fx.root], { timeout: 30000 });
+
+    await app.close();
+    const storage = storeOf(userDataDir);
+    for (const collection of storage.listCollections()) {
+      expect(storage.listFolders(collection.id).map((f) => f.path)).toEqual([fx.root]);
+    }
+  } finally {
+    if (session) await session.app.close().catch(() => {});
+    cleanupFixtureTree(fx.root);
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  }
 });
