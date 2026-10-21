@@ -1,11 +1,14 @@
 'use strict';
 
 /*
- * Add folder overlap confirmation e2e (Feature 3, Task 20; FR-8, FR-13). The collection is
- * written to <userDataDir>/store.json before launch with the real service + scanner. The picker
- * (stubFolderPicker) and the confirmation (stubConfirm, recorded by confirmCalls) are stubbed in
- * the main process, so no native dialog opens. The overlap check and the dialog text come from the
- * real service. The store is read from disk after the app is closed.
+ * Add folder refusal e2e (Feature 3, Tasks 20 and 34; FR-8 revised 2026-10-21, FR-13). A folder
+ * inside or identical to an existing one (also through a symlink) is refused with FOLDER_COVERED:
+ * the error shows in manage-error, nothing is written, nothing is scanned and no dialog is asked
+ * (confirmCalls stays empty). The collection is written to <userDataDir>/store.json before launch
+ * with the real service + scanner. The picker (stubFolderPicker) and the confirmation
+ * (stubConfirm, recorded by confirmCalls) are stubbed in the main process, so no native dialog
+ * opens. The contains case (replace) is in folder-replace.spec.js. The store is read from disk
+ * after the app is closed.
  */
 
 const fs = require('node:fs');
@@ -40,7 +43,7 @@ const indexSize = (userDataDir) => openStorage({ location: { baseDir: userDataDi
  * confirmation answers, closes the app and hands the observations to `check`. `fx` holds two
  * fixture trees (a, b) and a scratch directory (tmp) for symlinks. Everything is removed afterwards.
  */
-async function runCase({ label, existing, pick, answers }, check) {
+async function runCase({ label, existing, pick, answers = [], refused = false }, check) {
   const userDataDir = newUserDataDir(`add-overlap-${label}`);
   const fx = { a: buildFixtureTree(), b: buildFixtureTree(), tmp: fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'mitate-link-'))) };
   let session;
@@ -62,11 +65,13 @@ async function runCase({ label, existing, pick, answers }, check) {
     const rescan = await gateChannel(app, CHANNELS.rescanCollection);
     await stubConfirm(app, answers);
     await window.getByTestId('add-folder-button').click();
-    if (answers.length > 0) await expect.poll(async () => (await confirmCalls(app)).length, { timeout: 30000 }).toBe(1);
+    if (refused) await expect(window.getByTestId('manage-error')).toBeVisible({ timeout: 30000 });
     await expect(window.getByTestId('add-folder-button')).toBeEnabled({ timeout: 30000 });
 
     const obs = {
       fx, userDataDir, collectionId, pickPath, window, storeBefore, indexBefore, treeBefore, panelBefore,
+      errorText: refused ? await window.getByTestId('manage-error').textContent() : '',
+      noticeHidden: await window.getByTestId('manage-notice').isHidden(),
       treeAfter: await rowPaths(window),
       panelAfter: await panelPaths(window),
       calls: await confirmCalls(app),
@@ -91,14 +96,14 @@ async function runCase({ label, existing, pick, answers }, check) {
   }
 }
 
-const textOf = (call) => JSON.stringify(call);
-
 function expectNothingChanged(o) {
   expect(o.treeAfter).toEqual(o.treeBefore);
   expect(o.panelAfter).toEqual(o.panelBefore);
   expect(o.storeAfter).toBe(o.storeBefore);
   expect(o.indexAfter).toBe(o.indexBefore);
   expect(o.rescanCalls).toBe(0);
+  expect(o.calls).toEqual([]);
+  expect(o.noticeHidden).toBe(true);
 }
 
 async function expectRelaunchPanel(o, expected) {
@@ -106,92 +111,34 @@ async function expectRelaunchPanel(o, expected) {
   await expect(window.getByTestId('manage-folder-path')).toHaveText(expected);
 }
 
-test.describe('inside: the new folder is inside an existing one', () => {
-  const opts = (answers) => ({
-    label: 'inside', answers, existing: (fx) => [fx.a.root], pick: (fx) => `${fx.a.root}/Photos`,
-  });
-
-  test('cancel: one confirmation naming the existing folder; tree, panel and store unchanged', async () => {
-    await runCase(opts([false]), async (o) => {
-      expect(o.calls).toHaveLength(1);
-      expect(textOf(o.calls[0])).toContain('already covered');
-      expect(textOf(o.calls[0])).toContain(o.fx.a.root);
-      expectNothingChanged(o);
-      await expectRelaunchPanel(o, [o.fx.a.root]);
-    });
-  });
-
-  test('confirm: the folder is added, both are kept, and both survive a relaunch', async () => {
-    await runCase(opts([true]), async (o) => {
-      expect(o.calls).toHaveLength(1);
-      expect(textOf(o.calls[0])).toContain('already covered');
-      expect(o.panelAfter).toEqual([o.fx.a.root, o.pickPath]);
-      expect(o.records.map((f) => f.path)).toEqual([o.fx.a.root, o.pickPath]);
-      expect(o.rescanCalls).toBe(0);
-      await expectRelaunchPanel(o, [o.fx.a.root, o.pickPath]);
-    });
+test('inside: a subfolder of an existing folder is refused with "already covered" and nothing changes', async () => {
+  await runCase({
+    label: 'inside', refused: true, existing: (fx) => [fx.a.root], pick: (fx) => `${fx.a.root}/Photos`,
+  }, async (o) => {
+    expect(o.errorText).toContain('already covered');
+    expect(o.errorText).toContain(o.fx.a.root);
+    expectNothingChanged(o);
+    expect(o.records.map((f) => f.path)).toEqual([o.fx.a.root]);
+    await expectRelaunchPanel(o, [o.fx.a.root]);
   });
 });
 
-test.describe('contains: the new folder contains an existing one', () => {
-  const opts = (answers) => ({
-    label: 'contains', answers, existing: (fx) => [`${fx.a.root}/Photos`], pick: (fx) => fx.a.root,
-  });
-  const sentence = 'the collection already contains a folder inside the one being added';
-
-  test('cancel: asks naming the inner folder; nothing changes', async () => {
-    await runCase(opts([false]), async (o) => {
-      expect(o.calls).toHaveLength(1);
-      expect(textOf(o.calls[0])).toContain(sentence);
-      expect(textOf(o.calls[0])).toContain(`${o.fx.a.root}/Photos`);
-      expectNothingChanged(o);
-    });
-  });
-
-  test('confirm: keeps both folders, also after a relaunch', async () => {
-    await runCase(opts([true]), async (o) => {
-      expect(o.calls).toHaveLength(1);
-      expect(textOf(o.calls[0])).toContain(sentence);
-      expect(o.panelAfter).toEqual([`${o.fx.a.root}/Photos`, o.fx.a.root]);
-      expect(o.rescanCalls).toBe(0);
-      await expectRelaunchPanel(o, [`${o.fx.a.root}/Photos`, o.fx.a.root]);
-    });
+test('identical: the same path added again is refused with "already in the collection"; one record remains', async () => {
+  await runCase({
+    label: 'identical', refused: true, existing: (fx) => [fx.a.root], pick: (fx) => fx.a.root,
+  }, async (o) => {
+    expect(o.errorText).toContain('already in the collection');
+    expect(o.records.filter((f) => f.path === o.fx.a.root)).toHaveLength(1);
+    expectNothingChanged(o);
   });
 });
 
-test.describe('identical: the same path is added again', () => {
-  const opts = (answers) => ({
-    label: 'identical', answers, existing: (fx) => [fx.a.root], pick: (fx) => fx.a.root,
-  });
-
-  test('cancel: asks; one folder record for the path remains', async () => {
-    await runCase(opts([false]), async (o) => {
-      expect(o.calls).toHaveLength(1);
-      expect(textOf(o.calls[0])).toContain('already covered');
-      expect(o.records.filter((f) => f.path === o.fx.a.root)).toHaveLength(1);
-      expectNothingChanged(o);
-    });
-  });
-
-  test('confirm: two records for the path with different ids', async () => {
-    await runCase(opts([true]), async (o) => {
-      expect(o.calls).toHaveLength(1);
-      expect(textOf(o.calls[0])).toContain('already covered');
-      const same = o.records.filter((f) => f.path === o.fx.a.root);
-      expect(same).toHaveLength(2);
-      expect(same[0].id).not.toBe(same[1].id);
-      expect(o.rescanCalls).toBe(0);
-      await expectRelaunchPanel(o, [o.fx.a.root, o.fx.a.root]);
-    });
-  });
-});
-
-test('symlink: a link to an existing folder asks with "already covered"; cancel changes nothing', async () => {
+test('symlink: a link to an existing folder is refused as already in the collection; nothing changes', async () => {
   const link = (fx) => path.join(fx.tmp, 'link-to-a');
   let linked = true;
   await runCase({
     label: 'symlink',
-    answers: [false],
+    refused: true,
     existing: (fx) => [fx.a.root],
     pick: (fx) => {
       try {
@@ -203,11 +150,45 @@ test('symlink: a link to an existing folder asks with "already covered"; cancel 
     },
   }, async (o) => {
     test.skip(!linked, 'the platform refused to create a symlink in the temp directory');
-    expect(o.calls).toHaveLength(1);
-    expect(textOf(o.calls[0])).toContain('already covered');
-    expect(textOf(o.calls[0])).toContain(o.fx.a.root);
+    // The link resolves to the existing folder itself, so it is the identical case.
+    expect(o.errorText).toContain('already in the collection');
+    expect(o.errorText).toContain(o.fx.a.root);
     expectNothingChanged(o);
   });
+});
+
+test('inside, second collection: the subfolder is accepted into a collection that does not hold the parent', async () => {
+  const userDataDir = newUserDataDir('add-overlap-second');
+  const a = buildFixtureTree();
+  const b = buildFixtureTree();
+  const inner = `${a.root}/Photos`;
+  let session;
+  try {
+    const service = createCollectionService({ storage: openStorage({ location: { baseDir: userDataDir } }) });
+    await service.createCollection('Holds parent', [a.root]);
+    const second = await service.createCollection('Other', [b.root]);
+
+    session = await launchApp(userDataDir);
+    const { app, window } = session;
+    await expect(window.getByTestId('collection-item')).toHaveCount(2, { timeout: 30000 });
+    await window.getByTestId('collection-item').filter({ hasText: 'Other' }).click();
+    await expect(window.getByTestId('manage-folder-path')).toHaveText([b.root], { timeout: 30000 });
+
+    await stubFolderPicker(app, [inner]);
+    await stubConfirm(app, []);
+    await window.getByTestId('add-folder-button').click();
+    await expect(window.getByTestId('manage-folder-path')).toHaveText([b.root, inner], { timeout: 30000 });
+    await expect(window.getByTestId('manage-error')).toBeHidden();
+    expect(await confirmCalls(app)).toEqual([]);
+
+    await app.close();
+    expect(folderRecords(userDataDir, second.collection.id).map((f) => f.path)).toEqual([b.root, inner]);
+  } finally {
+    if (session) await session.app.close().catch(() => {});
+    cleanupFixtureTree(a.root);
+    cleanupFixtureTree(b.root);
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  }
 });
 
 test('unrelated: a folder that overlaps nothing is added with no confirmation', async () => {
