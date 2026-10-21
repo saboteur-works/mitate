@@ -22,7 +22,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-2 (the rule is implemented once and used by both the tree and the lists) and FR-13 (shared rule tests). A behaviour-preserving refactor: do not change what `buildTree` returns. Keep case-sensitive keys over `resolvedPath || path`. Update the header comment of `tree-model.js`.
 **POS:** task_6a547f3b
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 2: Type-list model
 **What:** Add `src/shared/type-list.js` with `buildTypeList(folders, files, kind)` returning the rows of one kind, one per file, de-duplicated by the shared rule and sorted for display.
@@ -32,7 +32,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-1, FR-2, FR-4, FR-8 (unavailable flag) and FR-13 (selection of files by kind, order and tie-break, shared rule). Use `TreeModel.ownedFiles` and `TreeModel.compareNames` from Task 1. Do not mutate the input arrays.
 **POS:** task_524b7ea9
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 3: Per-load list cache
 **What:** Add `src/shared/type-list-cache.js` with `createTypeListCache()`: lazy per-kind lists, built on first request and kept until the data is replaced.
@@ -42,7 +42,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-10 (lazy, cached per collection load, invalidated on rebuild) and FR-9 (one update path, `setData`, that Feature 5 can feed). Default build function is `TypeList.buildTypeList`; the injection is for the test.
 **POS:** task_2fde479d
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 4: Windowing arithmetic
 **What:** Add `src/shared/list-window.js` with `windowFor({ scrollTop, viewportHeight, rowCount, rowHeight, buffer })` returning the first and last row index to render, the spacer height and a row's top offset.
@@ -52,7 +52,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-3 (rows in the DOM depend on viewport and buffer, not on file count; the whole range reachable) and FR-13 (windowing arithmetic for 0, 1, a viewport's worth and 500,000 rows). Same constants as the tree (24px rows, buffer 5) are the defaults. Pure; the tree view keeps its own code and is not changed.
 **POS:** task_af621a08
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 5: Tab keyboard model
 **What:** Add `src/shared/tabs-model.js` with the pure rules for the tab row's keyboard behaviour and the tab list definition.
@@ -62,7 +62,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-1 (WAI-ARIA tabs pattern keys) and FR-8 (the empty text, with the kind in plain words). Automatic activation on arrow keys is allowed by the pattern; the view tabs in Task 8 decide whether focus alone activates. Keep wording in one place so the e2e tests and the UI agree.
 **POS:** task_008ada30
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 6: List view, rendering
 **What:** Add `src/renderer/list-view.js` (global `ListView`): a virtualized one-column list with name and dimmed folder per row, a spacer for the whole range, and the empty, loading and unavailable states.
@@ -72,7 +72,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 5
 **Notes:** Covers FR-3, FR-4 (one-line row, folder as the dimmed second part), FR-8 (unavailable label, empty text, no hiding) and FR-13. Keep the structure of `tree-view.js` (absolute rows, spacer, scroll listener) and use `ListWindow.windowFor`. The test hook is a temporary global used only by this spec; Task 9 replaces it with the real controller, and this spec keeps testing `ListView` directly. Selection and keyboard are Task 7. The shared scripts it needs are loaded by Task 8's `index.html`; until then the spec loads the page with the script tags added in this task's own commit, to be merged with Task 8's.
 **POS:** task_c676d91e
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 7: List view, selection and keyboard
 **What:** Add selection by node id, `file-selected` dispatch, the keyboard model and the ARIA roles to `ListView`.
@@ -82,7 +82,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 5
 **Notes:** Covers FR-5, FR-6 and FR-7 (id-based selection, kept on rebuild only if the id exists) and FR-13. Reuse the detail shape built by `tree-view.js` (same keys). Selecting does not open or alter anything on disk. A selection made in a list is a node id from `TypeList` rows (Task 2).
 **POS:** task_0ce63f1b
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 8: Page layout and view tabs
 **What:** Restructure `src/renderer/index.html` into a Rescan section above a tab row and one shared view area, add `src/renderer/view-tabs.js`, and load the new shared scripts.
@@ -92,7 +92,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-1 and FR-11 (no collection at launch, no list shown) and the OQ-8 placement. Keep the `tree-view` test id and the Rescan button's ids unchanged so the existing e2e tests still pass; the heading "Tree" is renamed (for example "Files"). `view-tabs.js` only manages tab state and the panel visibility and dispatches `view-changed` on `document` with `detail.view`; the data is wired in Task 9. Run `npm run test:e2e -- tests/e2e/tree-view.spec.js tests/e2e/rescan.spec.js` to confirm the layout change did not break them. Edits `index.html`, which Task 6 also touched for script tags: merge, do not duplicate.
 **POS:** task_6bf809b3
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 9: Type view controller and wiring
 **What:** Add `src/renderer/type-views.js` (global `TypeViews`) that feeds the lists from the collection view, computes a kind lazily on its tab's first open with a loading state, discards stale results, and clears the selection on a view switch; call it wherever the tree is shown, updated or cleared.
@@ -102,7 +102,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 5
 **Notes:** Covers FR-1, FR-7 (clear on collection change and on switch, keep on rebuild only if the id exists), FR-9 (one update path: `TypeViews.show(view)` for a collection load and `TypeViews.update(view)` for rescan/add/remove, called next to `TreeView.show` and `TreeView.update` at `create-collection.js:78`, `:138`, `collection-manage.js:151` and `rescan-button.js:51`), FR-10 (renderer-built, lazy, cached, loading state, token against stale results) and FR-11 (no scan or store write on a switch). Yield to the event loop (a `setTimeout` 0 or `requestAnimationFrame`) between showing the loading state and sorting so the state can paint. The measured cost (spec OQ-6: sorting 250k files of one kind took 678-743 ms on synthetic data) is why the loading state exists; do not add a worker. Implement the test-only delay and counter hooks behind a flag that only the e2e launch sets.
 **POS:** task_413487b3
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 10: Large fixture generator for e2e
 **What:** Add `tests/support/large-fixture.js` that creates a temp folder tree with a requested number of empty supported files spread across kinds and nested directories, plus its cleanup.
@@ -112,7 +112,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-13 (a generated fixture of at least 10,000 files for the e2e). Follow the guard style of `tests/support/fixture-tree.js` (`assertInsideFixture`). Files are empty; the scanner only needs names and extensions.
 **POS:** task_e62cf2c0
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 11: E2E lists, order and states
 **What:** Add `tests/e2e/type-views.spec.js` covering each view through the UI: contents, row shape, order, ties, empty state, unavailable label and the Documents kind.
@@ -122,7 +122,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 5
 **Notes:** Covers FR-1, FR-4, FR-8, FR-13 and the OQ-1, OQ-2, OQ-4, OQ-5, OQ-7 and OQ-8 outcomes. Rows are virtualized, so use scrolling or `End` for lists longer than the window; the fixture is small enough to stay inside one window. Reuse `buildFixtureTree`, `cleanupFixtureTree` and the helpers of `tests/support/e2e-app.js`; stub the folder picker with `stubFolderPicker`.
 **POS:** task_b36f71ba
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 12: E2E selection, detail and Reveal from lists
 **What:** Add `tests/e2e/type-views-select.spec.js` checking that selecting a file in a list drives the detail area and Reveal in Finder, by click and by keyboard, and that a switch clears the selection.
@@ -132,7 +132,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-5, FR-7, FR-11 and FR-13; reuses Feature 2's contract (the detail area reads only `file-selected`). Use `resetRevealCalls` between steps. `shell.showItemInFolder` is stubbed by `background-main.js`, so no Finder window opens.
 **POS:** task_3d289e50
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 13: E2E large list virtualization
 **What:** Add `tests/e2e/type-views-large.spec.js` checking a list over at least 10,000 generated files stays bounded in the DOM and that the last row is reachable with End.
@@ -142,7 +142,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-3, FR-6 (End/Home) and FR-13. The scan of 10,000 files takes a while: set `test.setTimeout(180000)` and wait for the collection's tree to appear before opening a tab. Clean the fixture with `cleanupLargeFixture` in `afterAll`.
 **POS:** task_60dd9383
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 14: E2E one appearance on a legacy nested store
 **What:** Add `tests/e2e/type-views-dedup.spec.js` checking that lists show each file once on a store seeded with nested and identical roots.
@@ -152,7 +152,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-2, FR-9 and FR-13 (legacy store test). Seed the data with `openStorage` as `dedup.spec.js` does; the UI cannot build these shapes any more.
 **POS:** task_b61c6264
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 15: E2E refresh and tree state across views
 **What:** Add `tests/e2e/type-views-refresh.spec.js` checking that rescan, add-folder, remove-folder and replace refresh the lists consistently with the tree, and that the tree's expansion and scroll survive view switches.
@@ -162,7 +162,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-9, FR-11 and FR-13. Use `gateChannel` from `tests/support/e2e-app.js` and `ipc-wrap.js` to observe channels; read `store.json` while the app is idle.
 **POS:** task_25bd76d7
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 16: Read-only check around the type views
 **What:** Add `tests/e2e/type-views-readonly.spec.js` running the read-only check around a flow that opens all four views, scrolls, selects and reveals.
@@ -172,7 +172,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-12 and US-4 (product FR-17). Uses `tools/readonly-check/index.js` as `management-readonly.spec.js` does; the app is closed for both snapshots. Do not add a check that runs while the app is open.
 **POS:** task_a3534ed7
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 17: README and full verification
 **What:** Add type views to the README feature list and run the whole unit, build and e2e suites.
@@ -182,7 +182,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-13 as a whole and the README line recorded in the spec's state section. No numeric performance claim in the README (product FR-20). If a spec scenario fails, fix it in the task that owns the behaviour rather than here.
 **POS:** task_f6e38e1b
-**Done:** [ ]
+**Done:** [x]
 
 ## Summary
 - Total tasks: 17
