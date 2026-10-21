@@ -14,11 +14,13 @@
  *                  Pass the guard shared with the rescan service so the two
  *                  exclude each other.
  *     confirm:     async (request) -> boolean; default none (no confirmation
- *                  is ever granted); used by createCollection, deleteCollection and addFolder.
+ *                  is ever granted); used by deleteCollection and by addFolder
+ *                  when the new folder contains existing ones.
  *
- *   createCollection(name, directories) -> Promise<{collection, folders, files} | {canceled: true}>
- *                                          (picked folders that overlap each other need
- *                                          confirm === true, before any scan)
+ *   createCollection(name, directories) -> Promise<{collection, folders, files, dropped}>
+ *                                          (picks inside another pick are dropped, no
+ *                                          confirmation, before any scan; dropped is
+ *                                          [{path, coveredBy}], empty when nothing nested)
  *   loadCollections()                   -> Promise<Array<{collection, folders, files}>>
  *                                          (listCollectionSummaries, then a view per collection)
  *   listCollectionSummaries()           -> Promise<Array<{id, name, folderCount,
@@ -29,11 +31,16 @@
  *                                          each with a derived resolvedPath; files per folder, in folder order)
  *   renameCollection(id, name)          -> Promise<{collection, folders, files}>
  *                                          (name trimmed; duplicates and any length accepted)
- *   addFolder(collectionId, dirPath)    -> Promise<{collection, folders, files} | {canceled: true}>
+ *   addFolder(collectionId, dirPath)    -> Promise<{collection, folders, files}
+ *                                          | {collection, folders, files, replaced} | {canceled: true}>
  *                                          (guard kind 'add-folder', held across validation,
- *                                          confirmation and the scan of the new folder only;
- *                                          overlap with the collection's folders needs
- *                                          confirm === true; one storage.transaction)
+ *                                          confirmation and the scan of the new folder only.
+ *                                          A folder inside or identical to one of the collection's
+ *                                          folders rejects with code 'FOLDER_COVERED', before any
+ *                                          confirmation, scan or write. A folder containing
+ *                                          existing ones needs confirm === true, then one
+ *                                          storage.transaction adds it and removes them;
+ *                                          replaced lists the removed folder paths)
  *   removeFolder(collectionId, folderId) -> Promise<{collection, folders, files}>
  *                                          (the refreshed view; rejects with code
  *                                          'LAST_FOLDER' for the only folder)
@@ -51,6 +58,13 @@
  *   non-blank; directories non-empty; each path absolute and an existing
  *   directory (files, missing and relative paths are rejected); duplicates
  *   (after path.resolve) are collapsed.
+ * - FR-8 (revised 2026-10-21): a collection never gains a folder inside another
+ *   of its folders. addFolder refuses inside and identical paths (inside wins
+ *   when a candidate is inside one folder and contains another, which only
+ *   legacy data allows). Replacing contained folders uses the remove-folder
+ *   cleanup (replaceFolderIndex(id, []) then removeFolder(id)), touches only
+ *   this collection's records, and does not apply the last-folder refusal.
+ *   createCollection drops nested picks instead of asking.
  * - FR-18: createCollection awaits every scan first, then stores the
  *   collection, its folders, their indexes and unavailable flags inside one
  *   storage.transaction, i.e. one write of the store regardless of folder count.
@@ -85,7 +99,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createInFlightGuard } = require('./in-flight.js');
-const { findOverlaps, describeOverlap } = require('./overlap.js');
+const { findOverlaps, describeRefusal, describeReplace, dropNested } = require('./overlap.js');
 const { defaultScan, checkReadableDirectory, isReadableDirectory, scanFolder } = require('./folder-access.js');
 
 async function assertDirectory(dir) {
@@ -202,38 +216,13 @@ function createCollectionService({
     return unique;
   }
 
-  // FR-8 at creation: the first overlapping pair among the picked folders
-  // (in pick order), worded by describeOverlap, plus a count of the other
-  // overlapping pairs. null when no two folders overlap.
-  function describeCreationOverlap(dirs) {
-    const lines = [];
-    for (let j = 1; j < dirs.length; j++) {
-      for (let i = 0; i < j; i++) {
-        const line = describeOverlap(findOverlaps(dirs[j], [dirs[i]]), dirs[j]);
-        if (line) lines.push(line);
-      }
-    }
-    if (lines.length === 0) return null;
-    const others = lines.length - 1;
-    return others === 0 ? lines[0] : `${lines[0]} (and ${others} other overlapping ${others === 1 ? 'pair' : 'pairs'}.)`;
-  }
-
   async function createCollection(name, directories) {
     const { name: cleanName, dirs } = await validate(name, directories);
-    const overlap = describeCreationOverlap(dirs);
-    if (overlap) {
-      const confirmed = typeof confirm === 'function' && (await confirm({
-        title: 'Create collection',
-        message: `Create "${cleanName}" with overlapping folders?`,
-        detail: `${overlap} `
-          + 'No files on disk are touched, deleted or moved.',
-        confirmLabel: 'Create collection',
-      }));
-      if (confirmed !== true) return { canceled: true };
-    }
+    // FR-8: only the outermost picks are scanned and stored; the rest are reported.
+    const { kept, dropped } = dropNested(dirs);
     const collectionId = idGenerator();
     const scanned = [];
-    for (const dir of dirs) scanned.push({ id: idGenerator(), dir, ...(await scanFolder(scan, dir)) });
+    for (const dir of kept) scanned.push({ id: idGenerator(), dir, ...(await scanFolder(scan, dir)) });
 
     // All awaits are done; apply every record in one synchronous transaction so
     // the store is written once (FR-18) and a failure leaves nothing behind.
@@ -249,7 +238,7 @@ function createCollectionService({
         storage.replaceFolderIndex(s.id, s.records);
       }
     });
-    return collectionView(storage, collectionId);
+    return { ...collectionView(storage, collectionId), dropped };
   }
 
   // Checks every folder of every collection concurrently, then applies all
@@ -361,33 +350,48 @@ function createCollectionService({
 
   // FR-6 / FR-7 / FR-8: adds one folder to a collection. The guard is held from
   // before the validation, across the confirmation and the scan of the new
-  // folder only. Overlap with the collection's existing folders needs
-  // confirm === true; otherwise nothing is scanned or stored.
+  // folder only. A folder inside or identical to an existing one is refused
+  // (FOLDER_COVERED) before anything is asked, scanned or stored. A folder
+  // containing existing ones needs confirm === true, then replaces them in one
+  // transaction; otherwise nothing is scanned or stored.
   async function addFolder(collectionId, dirPath) {
     return withGuard(collectionId, 'add-folder', async () => {
       const collection = requireCollection(collectionId);
       const [dir] = await validateDirectories([dirPath]);
-      const existing = storage.listFolders(collectionId).map((f) => f.path);
-      const line = describeOverlap(findOverlaps(dir, existing), dir);
-      if (line) {
+      const folders = storage.listFolders(collectionId);
+      const overlaps = findOverlaps(dir, folders.map((f) => f.path));
+      const refusal = describeRefusal(overlaps, dir);
+      if (refusal) {
+        const err = new Error(refusal);
+        err.code = 'FOLDER_COVERED';
+        throw err;
+      }
+      const replace = describeReplace(overlaps, dir);
+      const replaced = replace ? folders.filter((f) => overlaps.contains.includes(f.path)) : [];
+      if (replace) {
         const confirmed = typeof confirm === 'function' && (await confirm({
           title: 'Add folder',
-          message: `Add this folder to "${collection.name}"?`,
-          detail: `${line} `
-            + 'No files on disk are touched, deleted or moved.',
-          confirmLabel: 'Add folder',
+          message: replace.message,
+          detail: replace.detail,
+          confirmLabel: 'Replace folders',
         }));
         if (confirmed !== true) return { canceled: true };
       }
       const scanned = await scanFolder(scan, dir);
       const folderId = idGenerator();
-      const folderIds = [...(collection.folderIds || []).filter((id) => id !== folderId), folderId];
+      const removedIds = new Set(replaced.map((f) => f.id));
+      const folderIds = [...(collection.folderIds || []).filter((id) => id !== folderId && !removedIds.has(id)), folderId];
       storage.transaction(() => {
         storage.putFolder({ id: folderId, collectionId, path: dir, unavailable: scanned.unavailable });
         storage.replaceFolderIndex(folderId, scanned.records);
+        for (const f of replaced) {
+          storage.replaceFolderIndex(f.id, []);
+          storage.removeFolder(f.id);
+        }
         storage.putCollection({ ...collection, folderIds });
       });
-      return collectionView(storage, collectionId);
+      const view = collectionView(storage, collectionId);
+      return replace ? { ...view, replaced: replaced.map((f) => f.path) } : view;
     });
   }
 

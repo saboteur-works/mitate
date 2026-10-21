@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 const require = createRequire(import.meta.url);
-const { findOverlaps, describeOverlap } = require('../../src/main/collections/overlap.js');
+const overlap = require('../../src/main/collections/overlap.js');
+const { findOverlaps, describeRefusal, describeReplace, dropNested, describeDropped } = overlap;
 
 // Identity realpath keeps the pure-string cases independent of the disk.
 const same = (p) => p;
@@ -88,37 +89,140 @@ describe('findOverlaps', () => {
     const r = findOverlaps('/a/b/c', ['/a/b'], { realpath });
     expect(r.covered).toBe('/a/b');
   });
+
+  it('identical is true for an identical path, with a trailing slash and in a different case', () => {
+    for (const c of ['/a/b', '/a/b/', '/A/B']) {
+      const r = findOverlaps(c, ['/a/b'], { realpath: same });
+      expect(r.identical).toBe(true);
+      expect(r.covered).toBe('/a/b');
+    }
+  });
+
+  it('identical is false for inside, contains and unrelated', () => {
+    expect(findOverlaps('/a/b/c', ['/a/b'], { realpath: same }).identical).toBe(false);
+    expect(findOverlaps('/a', ['/a/b'], { realpath: same }).identical).toBe(false);
+    expect(findOverlaps('/a', ['/b'], { realpath: same }).identical).toBe(false);
+  });
+
+  it('a symlink to an existing folder is identical (real realpath)', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'overlap-'));
+    try {
+      const target = path.join(tmp, 'target');
+      const link = path.join(tmp, 'link');
+      fs.mkdirSync(target);
+      fs.symlinkSync(target, link);
+      expect(findOverlaps(link, [target]).identical).toBe(true);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
-describe('describeOverlap', () => {
-  it('covered wording names the folder', () => {
-    const text = describeOverlap(findOverlaps('/a/b/c', ['/a/b'], { realpath: same }), '/a/b/c');
+describe('describeRefusal', () => {
+  const r = (c, e) => findOverlaps(c, e, { realpath: same });
+
+  it('inside: "already covered" and the covering folder', () => {
+    const text = describeRefusal(r('/a/b/c', ['/a/b']), '/a/b/c');
     expect(text).toContain('already covered');
     expect(text).toContain('/a/b');
   });
 
-  it('contains wording names the inner folder', () => {
-    const text = describeOverlap(findOverlaps('/a', ['/a/b'], { realpath: same }), '/a');
-    expect(text).toContain('the collection already contains a folder inside the one being added');
+  it('identical: "already in the collection" and the path', () => {
+    const text = describeRefusal(r('/a/b', ['/a/b']), '/a/b');
+    expect(text).toContain('already in the collection');
     expect(text).toContain('/a/b');
   });
 
-  it('both at once give one message listing both', () => {
-    const result = findOverlaps('/a/b', ['/a', '/a/b/c'], { realpath: same });
-    const text = describeOverlap(result, '/a/b');
-    expect(typeof text).toBe('string');
+  it('contains and unrelated give null', () => {
+    expect(describeRefusal(r('/a', ['/a/b']), '/a')).toBeNull();
+    expect(describeRefusal(r('/a', ['/b']), '/a')).toBeNull();
+  });
+
+  it('inside one folder and containing another gives the refusal', () => {
+    const text = describeRefusal(r('/a/b', ['/a', '/a/b/c']), '/a/b');
     expect(text).toContain('already covered');
-    expect(text).toContain('the collection already contains a folder inside the one being added');
-    expect(text).toContain('/a/b/c');
-    expect(text.split('\n')).toHaveLength(1);
+    expect(text).toContain('/a');
   });
 
-  it('mentions the count when several folders overlap', () => {
-    const result = findOverlaps('/a', ['/a/b', '/a/c'], { realpath: same });
-    expect(describeOverlap(result, '/a')).toContain('2 in total');
+  it('mentions how many other folders cover it', () => {
+    expect(describeRefusal(r('/a/b/c', ['/a/b', '/a']), '/a/b/c')).toContain('1 other folder');
+  });
+});
+
+describe('describeReplace', () => {
+  const r = (c, e) => findOverlaps(c, e, { realpath: same });
+
+  it('one contained folder: detail names it and says it will be replaced', () => {
+    const out = describeReplace(r('/a', ['/a/b']), '/a');
+    expect(typeof out.message).toBe('string');
+    expect(out.detail).toContain('/a/b');
+    expect(out.detail).toContain('will be replaced');
   });
 
-  it('no overlap gives null', () => {
-    expect(describeOverlap(findOverlaps('/a', ['/b'], { realpath: same }), '/a')).toBeNull();
+  it('three contained folders: detail names all three', () => {
+    const out = describeReplace(r('/a', ['/a/b', '/a/c', '/a/d']), '/a');
+    for (const p of ['/a/b', '/a/c', '/a/d']) expect(out.detail).toContain(p);
+  });
+
+  it('inside, identical and unrelated give null', () => {
+    expect(describeReplace(r('/a/b', ['/a']), '/a/b')).toBeNull();
+    expect(describeReplace(r('/a', ['/a']), '/a')).toBeNull();
+    expect(describeReplace(r('/a', ['/b']), '/a')).toBeNull();
+  });
+
+  it('a candidate inside one folder and containing another gives null', () => {
+    expect(describeReplace(r('/a/b', ['/a', '/a/b/c']), '/a/b')).toBeNull();
+  });
+});
+
+describe('dropNested', () => {
+  it('keeps the outermost picks and reports the rest with their covering pick', () => {
+    expect(dropNested(['/a', '/a/b', '/a/b/c', '/x'], { realpath: same })).toEqual({
+      kept: ['/a', '/x'],
+      dropped: [{ path: '/a/b', coveredBy: '/a' }, { path: '/a/b/c', coveredBy: '/a' }],
+    });
+  });
+
+  it('gives the same decision when the picks are given inner first', () => {
+    const out = dropNested(['/a/b/c', '/a/b', '/x', '/a'], { realpath: same });
+    expect(out.kept).toEqual(['/x', '/a']);
+    expect(out.dropped).toEqual([{ path: '/a/b/c', coveredBy: '/a' }, { path: '/a/b', coveredBy: '/a' }]);
+  });
+
+  it('picks identical after realpath keep the first and drop the later one', () => {
+    const realpath = (p) => (p === '/link' ? '/target' : p);
+    expect(dropNested(['/target', '/link'], { realpath })).toEqual({
+      kept: ['/target'],
+      dropped: [{ path: '/link', coveredBy: '/target' }],
+    });
+    expect(dropNested(['/link', '/target'], { realpath })).toEqual({
+      kept: ['/link'],
+      dropped: [{ path: '/target', coveredBy: '/link' }],
+    });
+  });
+
+  it('/a/b and /a/bc do not drop each other', () => {
+    expect(dropNested(['/a/b', '/a/bc'], { realpath: same })).toEqual({ kept: ['/a/b', '/a/bc'], dropped: [] });
+  });
+
+  it('picks with nothing nested are all kept', () => {
+    expect(dropNested(['/x', '/y'], { realpath: same })).toEqual({ kept: ['/x', '/y'], dropped: [] });
+  });
+});
+
+describe('describeDropped', () => {
+  it('returns null for an empty list', () => {
+    expect(describeDropped([])).toBeNull();
+  });
+
+  it('names every dropped folder and the folder that covers it', () => {
+    const text = describeDropped([{ path: '/a/b', coveredBy: '/a' }, { path: '/x/y', coveredBy: '/x' }]);
+    for (const p of ['/a/b', '/a', '/x/y', '/x']) expect(text).toContain(p);
+  });
+});
+
+describe('module exports', () => {
+  it('no longer exports describeOverlap', () => {
+    expect(overlap.describeOverlap).toBeUndefined();
   });
 });

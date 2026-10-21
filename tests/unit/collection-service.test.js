@@ -131,7 +131,8 @@ describe('persistence and load', () => {
 
   it('getCollectionView returns the view, or null for an unknown id', async () => {
     const s = service();
-    const created = await s.createCollection('x', [fixture.root]);
+    const { dropped, ...created } = await s.createCollection('x', [fixture.root]);
+    expect(dropped).toEqual([]);
     expect(s.getCollectionView(created.collection.id)).toEqual(created);
     expect(s.getCollectionView('missing')).toBeNull();
   });
@@ -1037,60 +1038,231 @@ describe('addFolder', () => {
     expect(calls.scans).toEqual([]);
   });
 
-  it('a folder inside an existing one asks with "already covered" and the path; true keeps both', async () => {
-    const { svc, calls, one, base } = await setup({ confirm: () => true });
-    const inner = mk('base', 'inner');
-    const view = await svc.addFolder(one.collection.id, inner);
+  async function expectRefused(ctx, dirPath, wording, shown) {
+    const { svc, calls, one } = ctx;
+    const before = raw();
+    const err = await svc.addFolder(one.collection.id, dirPath).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.code).toBe('FOLDER_COVERED');
+    expect(err.message).toContain(wording);
+    expect(err.message).toContain(shown);
+    expect(calls.confirms.length).toBe(0);
+    expect(calls.scans).toEqual([]);
+    expect(calls.writes).toBe(0);
+    expect(raw()).toBe(before);
+  }
+
+  it('a folder inside an existing one is refused: FOLDER_COVERED, "already covered" and the path, nothing asked, scanned or written', async () => {
+    const ctx = await setup({ confirm: () => true });
+    await expectRefused(ctx, mk('base', 'inner'), 'already covered', ctx.base);
+  });
+
+  it('an identical path is refused as already in the collection, also with a trailing slash and a different case', async () => {
+    const ctx = await setup({ confirm: () => true });
+    await expectRefused(ctx, ctx.base, 'already in the collection', ctx.base);
+    await expectRefused(ctx, ctx.base + '/', 'already in the collection', ctx.base);
+    await expectRefused(ctx, path.join(path.dirname(ctx.base), 'BASE'), 'already in the collection', ctx.base);
+  });
+
+  it('a symlink to an existing folder is refused as already in the collection', async () => {
+    const ctx = await setup({ confirm: () => true });
+    const link = path.join(work, 'link');
+    fs.symlinkSync(ctx.base, link);
+    await expectRefused(ctx, link, 'already in the collection', ctx.base);
+  });
+
+  it('without an injected confirm an inside add is still refused', async () => {
+    const storage = openStorage({ location: { file: storageFile } });
+    const svc = createCollectionService({ storage, scan: stubScan });
+    const created = await svc.createCollection('One', [mk('base')]);
+    const err = await svc.addFolder(created.collection.id, mk('base', 'inner')).catch((e) => e);
+    expect(err.code).toBe('FOLDER_COVERED');
+  });
+
+  it('refuses a candidate inside one folder that also contains another (legacy nesting): inside wins', async () => {
+    const ctx = await setup({ confirm: () => true });
+    const mid = mk('base', 'mid');
+    const deep = mk('base', 'mid', 'deep');
+    // Legacy data: nested roots written straight to the store, as the old confirm-and-keep-both add did.
+    ctx.storage.transaction(() => {
+      ctx.storage.putFolder({ id: 'legacy', collectionId: ctx.one.collection.id, path: deep, unavailable: false });
+      ctx.storage.putCollection({ ...ctx.storage.getCollection(ctx.one.collection.id), folderIds: [ctx.one.folders[0].id, 'legacy'] });
+    });
+    ctx.calls.writes = 0;
+    await expectRefused(ctx, mid, 'already covered', ctx.base);
+  });
+
+  // Collection "One" holds `base`; adds outer/inner1 and outer/inner2 and a sibling `keep` for the replace cases.
+  async function withContained(opts = {}) {
+    const ctx = await setup(opts);
+    const inner1 = mk('outer', 'inner1');
+    const inner2 = mk('outer', 'inner2');
+    const keep = mk('keep');
+    let view = ctx.one;
+    for (const d of [inner1, inner2, keep]) view = await ctx.svc.addFolder(ctx.one.collection.id, d);
+    ctx.calls.writes = 0;
+    ctx.calls.scans.length = 0;
+    return { ...ctx, inner1, inner2, keep, outer: path.join(work, 'outer'), view };
+  }
+
+  it('a folder containing one existing folder asks once, before any scan, naming it, with "will be replaced" and the label', async () => {
+    const { svc, calls, one } = await setup({ confirm: () => true });
+    const inner = mk('outer', 'inner');
+    await svc.addFolder(one.collection.id, inner);
+    calls.scans.length = 0;
+    const outer = path.join(work, 'outer');
+    const view = await svc.addFolder(one.collection.id, outer);
     expect(calls.confirms.length).toBe(1);
     const req = calls.confirms[0];
     expect(Object.keys(req).sort()).toEqual(['confirmLabel', 'detail', 'message', 'title']);
-    expect(text(req)).toContain('already covered');
-    expect(text(req)).toContain(base);
-    expect(calls.scans).toEqual([inner]);
-    expect(view.folders.map((f) => f.path).sort()).toEqual([base, inner].sort());
+    expect(req.confirmLabel).toBe('Replace folders');
+    expect(req.detail).toContain(inner);
+    expect(req.detail).toContain('will be replaced');
+    expect(calls.scans).toEqual([outer]);
+    expect(view.replaced).toEqual([inner]);
   });
 
-  it('confirm false resolves canceled with no folder, index, scan or write', async () => {
-    const { svc, calls, one, base } = await setup({ confirm: () => false });
+  it('asks before the scan runs', async () => {
+    const order = [];
+    const { svc, one } = await setup({
+      confirm: () => { order.push('confirm'); return true; },
+      scan: async (d) => { order.push('scan'); return stubScan(d); },
+    });
+    await svc.addFolder(one.collection.id, mk('outer', 'inner'));
+    order.length = 0;
+    await svc.addFolder(one.collection.id, path.join(work, 'outer'));
+    expect(order).toEqual(['confirm', 'scan']);
+  });
+
+  it('confirm true leaves the new folder in place of the contained one: index, access data and folderIds cleaned, one scan, one write', async () => {
+    const { svc, calls, one, base, inner1, inner2, keep, outer } = await withContained({ confirm: () => true });
+    const before = openStorage({ location: { file: storageFile } });
+    const oldIds = before.getCollection(one.collection.id).folderIds;
+    const innerIds = before.listFolders(one.collection.id).filter((f) => [inner1, inner2].includes(f.path)).map((f) => f.id);
+    const view = await svc.addFolder(one.collection.id, outer);
+    expect(calls.scans).toEqual([outer]);
+    expect(calls.writes).toBe(1);
+    expect(view.replaced.sort()).toEqual([inner1, inner2].sort());
+    expect(view.folders.map((f) => f.path).sort()).toEqual([base, keep, outer].sort());
+    const added = view.folders.find((f) => f.path === outer);
+    expect(view.collection.folderIds).toEqual([...oldIds.filter((id) => !innerIds.includes(id)), added.id]);
+    const fresh = openStorage({ location: { file: storageFile } });
+    expect(fresh.getCollection(one.collection.id).folderIds).toEqual(view.collection.folderIds);
+    expect(fresh.getIndex({ folderId: added.id })).toHaveLength(1);
+    for (const id of innerIds) {
+      expect(fresh.getFolder(id)).toBeFalsy();
+      expect(fresh.getIndex({ folderId: id })).toEqual([]);
+    }
+    expect(raw()).not.toContain(inner1);
+    expect(raw()).not.toContain(inner2);
+  });
+
+  it('keeps an existing folder that is not contained when replacing two of three', async () => {
+    const { svc, one, base, keep, outer } = await withContained({ confirm: () => true });
+    const view = await svc.addFolder(one.collection.id, outer);
+    expect(view.folders.map((f) => f.path)).toContain(keep);
+    expect(view.folders.map((f) => f.path)).toContain(base);
+    expect(view.folders).toHaveLength(3);
+  });
+
+  it('replacing every folder of the collection is allowed (no LAST_FOLDER)', async () => {
+    const { svc, calls } = await setup({ confirm: () => true });
+    const sole = mk('sole', 'child');
+    const created = await svc.createCollection('Solo', [sole]);
+    calls.scans.length = 0;
+    const parent = path.join(work, 'sole');
+    const view = await svc.addFolder(created.collection.id, parent);
+    expect(view.folders.map((f) => f.path)).toEqual([parent]);
+    expect(view.replaced).toEqual([sole]);
+    expect(view.collection.folderIds).toEqual([view.folders[0].id]);
+    expect(view.files).toHaveLength(1);
+  });
+
+  it('leaves another collection holding the same path byte-identical after a replace', async () => {
+    const { svc, other, one, inner1, outer } = await withContained({ confirm: () => true });
+    await svc.addFolder(other.collection.id, inner1);
+    const snapshot = () => {
+      const s = openStorage({ location: { file: storageFile } });
+      const id = other.collection.id;
+      return JSON.stringify({
+        collection: s.getCollection(id),
+        folders: s.listFolders(id),
+        index: s.getIndex({ collectionId: id }),
+      });
+    };
+    const before = snapshot();
+    await svc.addFolder(one.collection.id, outer);
+    expect(snapshot()).toBe(before);
+  });
+
+  it('confirm false resolves canceled with no scan, no write and an unchanged store', async () => {
+    const { svc, calls, one, outer } = await withContained({ confirm: () => false });
     const before = raw();
-    await expect(svc.addFolder(one.collection.id, mk('base', 'inner'))).resolves.toEqual({ canceled: true });
+    await expect(svc.addFolder(one.collection.id, outer)).resolves.toEqual({ canceled: true });
     expect(calls.confirms.length).toBe(1);
     expect(calls.scans).toEqual([]);
     expect(calls.writes).toBe(0);
     expect(raw()).toBe(before);
-    const fresh = openStorage({ location: { file: storageFile } });
-    expect(fresh.listFolders(one.collection.id).map((f) => f.path)).toEqual([base]);
-    expect(fresh.getIndex({ collectionId: one.collection.id })).toHaveLength(1);
   });
 
-  it('without an injected confirm an overlapping add is canceled', async () => {
+  it('without an injected confirm a containing add is canceled', async () => {
     const calls = { scans: 0 };
     const storage = openStorage({ location: { file: storageFile } });
     const svc = createCollectionService({ storage, scan: async (d) => { calls.scans += 1; return stubScan(d); } });
-    const created = await svc.createCollection('One', [mk('base')]);
+    const created = await svc.createCollection('One', [mk('outer', 'inner')]);
     calls.scans = 0;
-    await expect(svc.addFolder(created.collection.id, mk('base', 'inner'))).resolves.toEqual({ canceled: true });
+    const before = raw();
+    await expect(svc.addFolder(created.collection.id, path.join(work, 'outer'))).resolves.toEqual({ canceled: true });
     expect(calls.scans).toBe(0);
+    expect(raw()).toBe(before);
   });
 
-  it('a folder containing an existing one asks with the "already contains" text naming it', async () => {
-    const { svc, calls, one } = await setup({ confirm: () => true });
-    const inner = mk('outer', 'inner');
-    const withInner = await svc.addFolder(one.collection.id, inner);
-    expect(calls.confirms.length).toBe(0);
-    const outer = path.join(work, 'outer');
-    const view = await svc.addFolder(withInner.collection.id, outer);
-    expect(calls.confirms.length).toBe(1);
-    expect(text(calls.confirms[0])).toContain('already contains a folder inside the one being added');
-    expect(text(calls.confirms[0])).toContain(inner);
-    expect(view.folders.map((f) => f.path)).toContain(outer);
+  it('a failure inside the replace transaction (removeFolder throws) leaves the store unchanged in memory and on disk', async () => {
+    let failing = false;
+    const { svc, guard, storage, one, outer } = await withContained({
+      confirm: () => true,
+      wrap: (s) => ({
+        ...s,
+        removeFolder(...args) {
+          if (failing) throw new Error('injected');
+          return s.removeFolder(...args);
+        },
+      }),
+    });
+    const before = raw();
+    const memBefore = JSON.stringify(storage.getCollection(one.collection.id)) + JSON.stringify(storage.listFolders(one.collection.id));
+    failing = true;
+    await expect(svc.addFolder(one.collection.id, outer)).rejects.toThrow('injected');
+    expect(raw()).toBe(before);
+    expect(JSON.stringify(storage.getCollection(one.collection.id)) + JSON.stringify(storage.listFolders(one.collection.id))).toBe(memBefore);
+    expect(guard.isBusy(one.collection.id)).toBe(false);
   });
 
-  it('an identical path asks with "already covered"', async () => {
-    const { svc, calls, one, base } = await setup({ confirm: () => false });
-    await expect(svc.addFolder(one.collection.id, base)).resolves.toEqual({ canceled: true });
-    expect(text(calls.confirms[0])).toContain('already covered');
-    expect(text(calls.confirms[0])).toContain(base);
+  it('a new folder whose scan fails is stored unavailable with an empty index, and the contained folders are still replaced', async () => {
+    let failScan = false;
+    const { svc, one, outer, inner1 } = await withContained({
+      confirm: () => true,
+      scan: async (d) => { if (failScan) throw new Error('drive gone'); return stubScan(d); },
+    });
+    failScan = true;
+    const view = await svc.addFolder(one.collection.id, outer);
+    const added = view.folders.find((f) => f.path === outer);
+    expect(added.unavailable).toBe(true);
+    expect(view.files.filter((f) => f.folderId === added.id)).toEqual([]);
+    expect(view.folders.map((f) => f.path)).not.toContain(inner1);
+    expect(view.replaced).toContain(inner1);
+  });
+
+  it('releases the guard after a refusal, a cancel and a failure', async () => {
+    const refused = await setup({ confirm: () => true });
+    await refused.svc.addFolder(refused.one.collection.id, mk('base', 'inner')).catch(() => {});
+    expect(refused.guard.isBusy(refused.one.collection.id)).toBe(false);
+    const canceled = await withContained({ confirm: () => false });
+    await canceled.svc.addFolder(canceled.one.collection.id, canceled.outer);
+    expect(canceled.guard.isBusy(canceled.one.collection.id)).toBe(false);
+    const failed = await withContained({ confirm: () => { throw new Error('dialog failed'); } });
+    await failed.svc.addFolder(failed.one.collection.id, failed.outer).catch(() => {});
+    expect(failed.guard.isBusy(failed.one.collection.id)).toBe(false);
   });
 
   it('a path with no overlap does not call confirm', async () => {
@@ -1145,8 +1317,8 @@ describe('addFolder', () => {
   it('holds the guard while confirm is pending', async () => {
     let answer;
     const pending = new Promise((r) => { answer = r; });
-    const { svc, guard, calls, one } = await setup({ confirm: () => pending });
-    const adding = svc.addFolder(one.collection.id, mk('base', 'inner'));
+    const { svc, guard, calls, one, outer } = await withContained({ confirm: () => pending });
+    const adding = svc.addFolder(one.collection.id, outer);
     await vi.waitFor(() => expect(calls.confirms.length).toBe(1));
     expect(guard.holder(one.collection.id)).toBe('add-folder');
     const rescan = createRescanService({ storage: openStorage({ location: { file: storageFile } }), scan: stubScan, guard });
@@ -1209,98 +1381,126 @@ describe('addFolder', () => {
   });
 });
 
-describe('createCollection overlap confirmation', () => {
+describe('createCollection drops nested picks', () => {
   const mk = (...parts) => {
     const d = path.join(work, ...parts);
     fs.mkdirSync(d, { recursive: true });
     return d;
   };
-  const text = (req) => `${req.message} ${req.detail}`;
 
-  function setup({ confirm } = {}) {
-    const calls = { scans: [], confirms: [] };
+  function setup({ confirm, wrap = (s) => s } = {}) {
+    const calls = { scans: [], confirms: [], writes: 0 };
     const scan = async (dir) => {
       calls.scans.push(dir);
       return stubScan(dir);
     };
-    const wrapped = confirm === undefined ? undefined : async (req) => {
-      calls.confirms.push(req);
-      return confirm(req);
-    };
-    const storage = openStorage({ location: { file: storageFile } });
-    const svc = createCollectionService({ storage, scan, confirm: wrapped });
+    const storage = wrap(openStorage({
+      location: { file: storageFile },
+      fs: { renameSync(a, b) { calls.writes += 1; return fs.renameSync(a, b); } },
+    }));
+    const svc = createCollectionService({
+      storage,
+      scan,
+      confirm: confirm && (async (req) => { calls.confirms.push(req); return confirm(req); }),
+    });
     return { svc, calls };
   }
-  const stored = () => openStorage({ location: { file: storageFile } }).listCollections();
+  const stored = () => openStorage({ location: { file: storageFile } });
 
-  it('asks once naming the overlapping folder; confirm true creates with both folders', async () => {
-    const outer = mk('outer');
-    const inner = mk('outer', 'inner');
-    const { svc, calls } = setup({ confirm: () => true });
+  it('keeps the outer pick, scans only it, and reports the inner one with its covering folder', async () => {
+    const outer = mk('m', 'a');
+    const inner = mk('m', 'a', 'b');
+    const { svc, calls } = setup();
     const view = await svc.createCollection('C', [outer, inner]);
-    expect(calls.confirms).toHaveLength(1);
-    expect(text(calls.confirms[0])).toContain(inner);
-    expect(text(calls.confirms[0])).toContain(outer);
-    expect(view.folders.map((f) => f.path)).toEqual([outer, inner]);
+    expect(view.folders.map((f) => f.path)).toEqual([outer]);
+    expect(calls.scans).toEqual([outer]);
+    expect(view.dropped).toEqual([{ path: inner, coveredBy: outer }]);
+    expect(stored().listFolders(view.collection.id).map((f) => f.path)).toEqual([outer]);
+    expect(view.collection.folderIds).toEqual([view.folders[0].id]);
   });
 
-  it('confirm false resolves canceled; nothing scanned or stored', async () => {
-    const outer = mk('outer');
-    const inner = mk('outer', 'inner');
-    const { svc, calls } = setup({ confirm: () => false });
-    expect(await svc.createCollection('C', [outer, inner])).toEqual({ canceled: true });
-    expect(calls.confirms).toHaveLength(1);
-    expect(calls.scans).toEqual([]);
-    expect(stored()).toEqual([]);
+  it('gives the same result when the inner pick is given first', async () => {
+    const outer = mk('m', 'a');
+    const inner = mk('m', 'a', 'b');
+    const { svc, calls } = setup();
+    const view = await svc.createCollection('C', [inner, outer]);
+    expect(view.folders.map((f) => f.path)).toEqual([outer]);
+    expect(calls.scans).toEqual([outer]);
+    expect(view.dropped).toEqual([{ path: inner, coveredBy: outer }]);
   });
 
-  it('only confirm === true proceeds', async () => {
-    const outer = mk('outer');
-    const inner = mk('outer', 'inner');
-    const { svc } = setup({ confirm: () => 'yes' });
-    expect(await svc.createCollection('C', [outer, inner])).toEqual({ canceled: true });
-    expect(stored()).toEqual([]);
-  });
-
-  it('three folders with two overlapping pairs ask once, naming the first and counting the other', async () => {
+  it('three picks with two nested pairs report both dropped folders with their covering folders', async () => {
     const a = mk('a');
     const a1 = mk('a', 'one');
-    const a2 = mk('a', 'two');
-    const { svc, calls } = setup({ confirm: () => true });
-    await svc.createCollection('C', [a, a1, a2]);
-    expect(calls.confirms).toHaveLength(1);
-    const t = text(calls.confirms[0]);
-    expect(t).toContain(a1);
-    expect(t).not.toContain(a2);
-    expect(t).toMatch(/and 1 other overlapping pair/);
+    const x = mk('x');
+    const x1 = mk('x', 'one');
+    const { svc } = setup();
+    const view = await svc.createCollection('C', [a, a1, x, x1]);
+    expect(view.folders.map((f) => f.path)).toEqual([a, x]);
+    expect(view.dropped).toEqual([{ path: a1, coveredBy: a }, { path: x1, coveredBy: x }]);
   });
 
-  it('non-overlapping folders and collapsed duplicates do not ask', async () => {
+  it('unrelated picks keep every folder and report nothing dropped', async () => {
     const x = mk('x');
     const y = mk('y');
-    const { svc, calls } = setup({ confirm: () => false });
-    expect((await svc.createCollection('C', [x, y])).folders).toHaveLength(2);
-    const v = await svc.createCollection('D', [x, x, path.join(x, '..', 'x')]);
-    expect(v.folders).toHaveLength(1);
-    expect(calls.confirms).toHaveLength(0);
+    const { svc } = setup();
+    const view = await svc.createCollection('C', [x, y]);
+    expect(view.folders.map((f) => f.path)).toEqual([x, y]);
+    expect(view.dropped).toEqual([]);
   });
 
-  it('the same folder in two separate collections is accepted without a prompt', async () => {
+  it('duplicates that collapse after path.resolve are not reported as dropped', async () => {
     const x = mk('x');
-    const { svc, calls } = setup({ confirm: () => false });
-    await svc.createCollection('A', [x]);
-    await svc.createCollection('B', [x]);
-    expect(calls.confirms).toHaveLength(0);
-    expect(stored()).toHaveLength(2);
+    const { svc } = setup();
+    const view = await svc.createCollection('C', [x, x, path.join(x, '..', 'x')]);
+    expect(view.folders).toHaveLength(1);
+    expect(view.dropped).toEqual([]);
   });
 
-  it('with no confirm injected an overlapping creation resolves canceled', async () => {
+  it('never calls confirm at creation, even when one is injected', async () => {
+    const outer = mk('outer');
+    const inner = mk('outer', 'inner');
+    const { svc, calls } = setup({ confirm: () => false });
+    const view = await svc.createCollection('C', [outer, inner]);
+    expect(view.folders).toHaveLength(1);
+    expect(calls.confirms).toEqual([]);
+  });
+
+  it('drops a pick that is a symlink to another pick and reports it', async () => {
+    const target = mk('target');
+    const link = path.join(work, 'link');
+    fs.symlinkSync(target, link);
+    const { svc, calls } = setup();
+    const view = await svc.createCollection('C', [target, link]);
+    expect(view.folders.map((f) => f.path)).toEqual([target]);
+    expect(calls.scans).toEqual([target]);
+    expect(view.dropped).toEqual([{ path: link, coveredBy: target }]);
+  });
+
+  it('the same folder in two separate collections is accepted', async () => {
+    const x = mk('x');
+    const { svc } = setup();
+    const first = await svc.createCollection('A', [x]);
+    const second = await svc.createCollection('B', [x]);
+    expect(first.dropped).toEqual([]);
+    expect(second.dropped).toEqual([]);
+    expect(stored().listCollections()).toHaveLength(2);
+  });
+
+  it('a dropped pick that is not a readable directory still rejects the whole creation', async () => {
+    const outer = mk('outer');
+    const { svc, calls } = setup();
+    await expect(svc.createCollection('C', [outer, path.join(outer, 'missing')])).rejects.toThrow(/missing/);
+    expect(calls.scans).toEqual([]);
+    expect(stored().listCollections()).toEqual([]);
+  });
+
+  it('writes the store once', async () => {
     const outer = mk('outer');
     const inner = mk('outer', 'inner');
     const { svc, calls } = setup();
-    expect(await svc.createCollection('C', [outer, inner])).toEqual({ canceled: true });
-    expect(calls.scans).toEqual([]);
-    expect(stored()).toEqual([]);
+    await svc.createCollection('C', [outer, inner]);
+    expect(calls.writes).toBe(1);
   });
 });
 
