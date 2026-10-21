@@ -317,3 +317,114 @@ describe('storage.transaction (FR-18)', () => {
     expect(fs.readdirSync(path.dirname(f))).toEqual(['store.json']);
   });
 });
+
+describe('folderIds upkeep (Feature 3)', () => {
+  const { createCountingFs } = require('../support/counting-fs.js');
+  const created = '2026-10-18T00:00:00.000Z';
+  const snap = (store) => ({
+    collections: store.listCollections(),
+    folders: store.listFolders(),
+    index: store.getIndex(),
+  });
+  const rec = (p) => [{ path: `${p}/x.jpg`, relativePath: 'x.jpg', name: 'x.jpg', extension: 'jpg', kind: 'image' }];
+
+  function twoCollections(store) {
+    store.putCollection({ id: 'c1', name: 'One', folderIds: [], createdAt: created });
+    store.putCollection({ id: 'c2', name: 'Two', folderIds: [], createdAt: created });
+    for (const [id, c] of [['f1', 'c1'], ['f2', 'c1'], ['g1', 'c2']]) {
+      const p = id === 'f2' ? '/media/other' : '/media/photos';
+      store.putFolder({ id, collectionId: c, path: p });
+      store.replaceFolderIndex(id, rec(p));
+      store.setFolderAccess(id, { kind: 'plain-path', id });
+    }
+  }
+
+  it('putFolder appends the id once and does not duplicate on a second put', () => {
+    const store = openStorage({ location: { file: file(dir) } });
+    store.putCollection({ id: 'c1', name: 'One', folderIds: [], createdAt: created });
+    store.putFolder({ id: 'f1', collectionId: 'c1', path: '/media/a' });
+    expect(store.getCollection('c1').folderIds).toEqual(['f1']);
+    store.putFolder({ id: 'f1', collectionId: 'c1', path: '/media/a' });
+    store.putFolder({ id: 'f2', collectionId: 'c1', path: '/media/b' });
+    expect(store.getCollection('c1').folderIds).toEqual(['f1', 'f2']);
+  });
+
+  it('putFolder for a missing collection stores the folder and throws nothing', () => {
+    const store = openStorage({ location: { file: file(dir) } });
+    expect(() => store.putFolder({ id: 'f1', collectionId: 'nope', path: '/media/a' })).not.toThrow();
+    expect(store.getFolder('f1').collectionId).toBe('nope');
+    expect(store.listCollections()).toEqual([]);
+  });
+
+  it('removeFolder removes the id, index and access and leaves everything else identical', () => {
+    const store = openStorage({ location: { file: file(dir) } });
+    twoCollections(store);
+    expect(store.getCollection('c1').folderIds).toEqual(['f1', 'f2']);
+    const before = snap(store);
+    store.removeFolder('f1');
+    expect(store.getCollection('c1').folderIds).toEqual(['f2']);
+    expect(store.getFolder('f1')).toBeUndefined();
+    expect(store.getIndex({ folderId: 'f1' })).toEqual([]);
+    expect(store.getFolderAccess('f1')).toBeUndefined();
+    expect(store.getFolder('f2')).toEqual(before.folders.find((f) => f.id === 'f2'));
+    expect(store.getFolder('g1')).toEqual(before.folders.find((f) => f.id === 'g1'));
+    expect(store.getCollection('c2')).toEqual(before.collections.find((c) => c.id === 'c2'));
+    expect(store.getIndex({ folderId: 'g1' })).toEqual(before.index.filter((r) => r.folderId === 'g1'));
+    expect(store.getIndex({ folderId: 'f2' })).toEqual(before.index.filter((r) => r.folderId === 'f2'));
+    expect(store.getFolderAccess('g1')).toEqual({ kind: 'plain-path', id: 'g1' });
+    expect(store.getFolder('g1').path).toBe('/media/photos');
+  });
+
+  it('removeFolder of an unknown id changes and writes nothing', () => {
+    const counter = createCountingFs();
+    const store = openStorage({ location: { file: file(dir) }, fs: counter.impl });
+    twoCollections(store);
+    const before = snap(store);
+    counter.reset();
+    store.removeFolder('nope');
+    expect(snap(store)).toEqual(before);
+    expect(counter.renames).toBe(0);
+  });
+
+  it('removeCollection removes its records and leaves a second collection with the same paths identical', () => {
+    const store = openStorage({ location: { file: file(dir) } });
+    twoCollections(store);
+    const before = snap(store);
+    store.removeCollection('c1');
+    expect(store.getCollection('c1')).toBeUndefined();
+    expect(store.listFolders().map((f) => f.id)).toEqual(['g1']);
+    expect(store.getIndex().map((r) => r.folderId)).toEqual(['g1']);
+    for (const id of ['f1', 'f2']) expect(store.getFolderAccess(id)).toBeUndefined();
+    expect(store.getFolderAccess('g1')).toEqual({ kind: 'plain-path', id: 'g1' });
+    expect(store.getCollection('c2')).toEqual(before.collections.find((c) => c.id === 'c2'));
+    expect(store.getFolder('g1')).toEqual(before.folders.find((f) => f.id === 'g1'));
+    expect(store.getIndex()).toEqual(before.index.filter((r) => r.folderId === 'g1'));
+  });
+
+  it('an exception after removeFolder inside a transaction leaves memory and disk unchanged', () => {
+    const f = file(dir);
+    const store = openStorage({ location: { file: f } });
+    twoCollections(store);
+    const bytes = fs.readFileSync(f);
+    const before = snap(store);
+    expect(() =>
+      store.transaction(() => {
+        store.removeFolder('f1');
+        throw new Error('boom');
+      })
+    ).toThrow('boom');
+    expect(snap(store)).toEqual(before);
+    expect(store.getFolderAccess('f1')).toEqual({ kind: 'plain-path', id: 'f1' });
+    expect(fs.readFileSync(f).equals(bytes)).toBe(true);
+  });
+
+  it('keeps format version 1 and adds no top-level keys', () => {
+    const f = file(dir);
+    const store = openStorage({ location: { file: f } });
+    twoCollections(store);
+    store.removeFolder('f1');
+    const saved = JSON.parse(fs.readFileSync(f, 'utf8'));
+    expect(saved.version).toBe(1);
+    expect(Object.keys(saved).sort()).toEqual(['access', 'collections', 'folders', 'index', 'version']);
+  });
+});

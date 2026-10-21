@@ -63,7 +63,7 @@ Someone with thousands to tens of thousands of files across a few folders and dr
 - FR-2: Users MUST be able to rename a collection, delete a collection, and remove a folder from a collection. None of these actions may change anything on disk. [US-1] [US-3]
 - FR-3: Users MUST be able to switch the active collection. All views MUST then show only files from that collection's folders. [US-2]
 - FR-4: The same folder MUST be allowed in more than one collection. [US-1]
-- FR-5: When a user adds a folder that sits inside a folder already in the collection, the app MUST tell them it is already covered and require confirmation. When a user adds a folder that contains a folder already in the collection, the app MUST tell them the collection already contains a folder inside the one being added, and require confirmation. On confirm in either case, both folders MUST stay in the collection, and FR-6 still shows each file once. If the user cancels, the collection MUST be left unchanged. [US-1]
+- FR-5: A collection MUST NOT hold a folder that is inside another of its folders. When a user adds a folder that sits inside a folder already in the collection, or the same folder again, the app MUST refuse, tell them the folder is already covered (naming the folder that covers it) or already in the collection, and change nothing: no record is written and no scan runs. There is no confirmation for this case. When a user adds a folder that contains one or more folders already in the collection, the app MUST show a confirmation naming the folders it contains and saying they will be replaced. On confirm, the new folder is added and the contained folders are removed from this collection in one step, the index entries no other collection uses are deleted (as for removing a folder), and the new folder is scanned. If the user cancels, the collection MUST be left unchanged. This replace MAY remove every existing folder, because the new folder is added in the same step. When a collection is created from picked folders that nest, the app MUST keep only the outermost picks, MUST tell the user which folders were dropped and which folder covers each, and does not ask for confirmation. Revised 2026-10-21 (see OQ-6). [US-1]
 - FR-6: A file reachable through more than one folder in the same collection MUST appear once. [US-5]
 - FR-7: Collections and folder access MUST persist across app restarts without the user re-selecting folders. [US-1]
 - FR-8: The app MUST index files of supported media types in each folder and all its subfolders, at any depth. [US-5]
@@ -85,7 +85,7 @@ Someone with thousands to tens of thousands of files across a few folders and dr
 - FR-24: A video whose picture or sound doesn't decode MUST say which is missing, not play silently or blank. [US-4]
 - FR-25: Thumbnails and converted playback copies in app storage MUST stay within a size cap that has a default value and that users can change in settings. When the cap is reached, the least recently used entries MUST be evicted. Evicted items MUST be regenerated on next use. The default value is set in the relevant feature spec. [US-4]
 - FR-26: Users MUST be able to trigger a rescan of a collection, which updates its index from disk. The app MUST NOT rescan automatically on launch; on launch it MUST show the stored index. [US-1]
-- FR-27: Users MUST be able to add a folder to an existing collection, subject to the overlap confirmation in FR-5. [US-1]
+- FR-27: Users MUST be able to add a folder to an existing collection, subject to the overlap rules in FR-5 (refuse inside, confirm-and-replace when containing). [US-1]
 
 ## Constraints
 - **Platform.** Desktop ships on macOS first. Requirements other than "Reveal in Finder" SHOULD NOT assume macOS, because Windows and Linux follow, post-v2. The MVP format handling relies on macOS tools, so each later platform needs its own.
@@ -129,6 +129,7 @@ Answer: no encryption in MVP; the free/paid split is deferred to the v2 spec.
 
 **OQ-6 [Resolved 2026-10-18]: What happens when a user adds a folder that contains a folder already in the collection?**
 Answer: the app warns and requires confirmation; on confirm both folders stay (FR-5).
+**Revised 2026-10-21, after the hands-on check:** the user added a folder inside a folder already in the collection and confirmed; both roots were kept, and FR-6 (the outer root owns the file) left the inner root showing nothing when expanded. The user judged that this reads as a bug. New decision: adding a folder inside an existing one is refused (no dialog), adding a folder that contains existing ones asks for confirmation and replaces them, and creation drops nested picks and tells the user (FR-5). Collections stored before this change can still hold nested roots; the tree still shows each file once for them (FR-6) and no migration rewrites them.
 **Impact:** FR-5, FR-6.
 **Owner:** Product designer
 
@@ -148,7 +149,7 @@ Answer: the app warns and requires confirmation; on confirm both folders stay (F
 - **Cache disk use (OQ-3):** a default size cap with least-recently-used eviction and a user-visible setting (FR-25). The default value is set in the relevant feature spec.
 - **Third-party decoders (OQ-4):** in MVP, wmv, wma, avi, flv and DNxHD are index-only and show "preview not available" (FR-14). No decoders are bundled. Adding them is revisited post-v2.
 - **Encryption (OQ-5):** none in MVP. App data relies on macOS protections such as FileVault. Feature work must not make adding encryption later impossible. The free/paid split is deferred to the v2 spec (its OQ-2).
-- **Containing folder added (OQ-6):** the app tells the user the collection already contains a folder inside the one being added and requires confirmation. On confirm both folders stay and FR-6 still shows each file once. On cancel the collection is unchanged (FR-5).
+- **Containing folder added (OQ-6), revised 2026-10-21:** originally both folders stayed after a confirmation. After the hands-on check (an inner root kept but shown empty, which read as a bug) the decision is: a folder inside an existing one is refused and the message names the folder that covers it; a folder that contains existing ones asks for confirmation naming them, and on confirm replaces them in one step and scans the new folder; on cancel the collection is unchanged; at creation, nested picks are dropped and the user is told (FR-5). FR-6 still shows each file once, which also covers collections stored before this change.
 - **Formats Electron can't decode** are handled with macOS's built-in tools, with no bundled decoders and no native code. This makes Electron the desktop runtime. Measurements are in `docs/research/format-support.md`.
   - **Thumbnails and preview up to 2048 px:** Quick Look via Electron's `createThumbnailFromPath`. Call it only for the types that tested as working, because for others it returns a generic icon without an error.
   - **Full-resolution RAW:** the embedded JPEG.

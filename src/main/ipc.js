@@ -6,8 +6,28 @@
  *
  *   folders:pick        -> { canceled, paths }   native folder picker; directories
  *                          only (openDirectory + multiSelections, never openFile)
- *   collections:create  (name, directories) -> { ok: true, summary: { id, name, folderCount } }
- *                          | { ok: false, error }; the tree is loaded by collections:getView
+ *   collections:create  (name, directories) -> { ok: true, summary: { id, name, folderCount }, dropped, notice }
+ *                          | { ok: false, error }; the tree is loaded by collections:getView.
+ *                          dropped = [{ path, coveredBy }] lists picks inside another pick that
+ *                          were left out, [] when none; notice is their text (describeDropped), or null.
+ *   collections:rename  (collectionId, name) -> { ok: true, summary: { id, name, folderCount } }
+ *   collections:delete  (collectionId) -> { ok: true, deleted: true } | { ok: true, canceled: true }
+ *                          the service asks for confirmation (native dialog); no files on disk are touched.
+ *   collections:addFolders (collectionId, paths) -> { ok: true, view, replaced, dropped, notice }
+ *                          | { ok: false, error, code?, view, replaced, dropped, notice }
+ *                          the multi-pick add used by the panel (paths come from folders:pick): one guard
+ *                          acquisition, picks inside or identical to another pick are dropped first
+ *                          (dropped = [{ path, coveredBy }]), the rest are added in order. A folder inside or
+ *                          identical to one already in the collection is refused with code 'FOLDER_COVERED'.
+ *                          The first refusal or failure of a pick stops the rest and comes back as
+ *                          { ok: false, error, code? } with the view so far (view is null when nothing was added).
+ *                          replaced = paths of the folders removed because a new folder contains them, [] when
+ *                          none; notice = the replaced and dropped texts (describeReplaced, describeDropped) or null.
+ *                          A cancelled replace confirmation skips that pick.
+ *   collections:removeFolder (collectionId, folderId) -> { ok: true, view }
+ *                          rename, delete, add and remove fail with code 'COLLECTION_BUSY' while the
+ *                          collection has another action in flight (shared guard), remove also with
+ *                          'LAST_FOLDER' for the only folder.
  *   collections:list    -> { ok: true, summaries } | { ok: false, error }
  *                          summaries = [{ id, name, folderCount,
  *                          folders: [{ id, path, unavailable }] }]; no file records
@@ -34,6 +54,7 @@
  */
 
 const { messageOf } = require('./message-of.js');
+const { describeDropped, describeReplaced } = require('./collections/overlap.js');
 
 const CHANNELS = {
   pickFolders: 'folders:pick',
@@ -41,6 +62,10 @@ const CHANNELS = {
   listCollections: 'collections:list',
   getCollectionView: 'collections:getView',
   rescanCollection: 'collections:rescan',
+  renameCollection: 'collections:rename',
+  deleteCollection: 'collections:delete',
+  addFolders: 'collections:addFolders',
+  removeFolder: 'collections:removeFolder',
   revealFile: 'files:reveal',
 };
 
@@ -67,10 +92,12 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, revealFil
     return { canceled: false, paths: [...result.filePaths] };
   });
 
+  const summaryOf = ({ collection, folders }) => ({ id: collection.id, name: collection.name, folderCount: folders.length });
+
   handle(CHANNELS.createCollection, (_event, name, directories) =>
     guard(async () => {
-      const { collection, folders } = await service.createCollection(name, directories);
-      return { summary: { id: collection.id, name: collection.name, folderCount: folders.length } };
+      const created = await service.createCollection(name, directories);
+      return { summary: summaryOf(created), dropped: created.dropped, notice: describeDropped(created.dropped) };
     }));
 
   handle(CHANNELS.listCollections, () =>
@@ -88,6 +115,40 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, revealFil
       if (!rescanService) throw new Error('Rescan is not available');
       const { summary, ...view } = await rescanService.rescanCollection(collectionId);
       return { view, summary };
+    }));
+
+  const requireStrings = (...values) => {
+    if (!values.every((v) => typeof v === 'string')) throw new Error('Invalid arguments');
+  };
+
+  handle(CHANNELS.renameCollection, (_event, collectionId, name) =>
+    guard(async () => {
+      requireStrings(collectionId, name);
+      return { summary: summaryOf(await service.renameCollection(collectionId, name)) };
+    }));
+
+  handle(CHANNELS.deleteCollection, (_event, collectionId) =>
+    guard(async () => {
+      requireStrings(collectionId);
+      const result = await service.deleteCollection(collectionId);
+      return result && result.canceled ? { canceled: true } : { deleted: true };
+    }));
+
+  handle(CHANNELS.addFolders, (_event, collectionId, paths) =>
+    guard(async () => {
+      if (!Array.isArray(paths)) throw new Error('Invalid arguments');
+      requireStrings(collectionId, ...paths);
+      const { view, replaced, replacements, dropped, error } = await service.addFolders(collectionId, paths);
+      const notice = [describeReplaced(replacements), describeDropped(dropped)].filter(Boolean).join(' ') || null;
+      if (!error) return { view, replaced, dropped, notice };
+      // guard() spreads the result after ok: true, so ok: false here wins.
+      return { ok: false, error: error.message, ...(error.code ? { code: error.code } : {}), view, replaced, dropped, notice };
+    }));
+
+  handle(CHANNELS.removeFolder, (_event, collectionId, folderId) =>
+    guard(async () => {
+      requireStrings(collectionId, folderId);
+      return { view: await service.removeFolder(collectionId, folderId) };
     }));
 
   // The index check runs first so an unindexed path never reaches the file system.

@@ -39,14 +39,14 @@ Each requirement belongs to exactly one feature, or is listed as unassigned with
 **Vertical slice:**
 - **data:** many collections, and many-to-many links between collections and folders;
 - **logic:** switching the active collection, detecting overlapping folders in both directions, and showing each file only once;
-- **interface:** a collection switcher, rename and delete, removing a folder, and a confirmation when adding a folder that is inside, or contains, one already in the collection.
+- **interface:** a collection switcher, rename and delete, removing a folder, a refusal when adding a folder that is inside one already in the collection, a confirmation that names and replaces the contained folders when adding a folder that contains some, and a notice at creation when nested picks are dropped.
 
 **Requirements covered:** FR-2, FR-3, FR-4, FR-5, FR-6, FR-27
 **User stories:** US-1, US-2, US-3
 **Depends on:** 1
 **Branch suggestion:** feat/collection-management
 **Notes:**
-- **OQ-6 was resolved into FR-5.** Adding a folder that contains one already in the collection tells the user, requires confirmation, and on confirm keeps both folders. Cancelling leaves the collection unchanged.
+- **OQ-6 was resolved into FR-5, and revised 2026-10-21** after the hands-on check (an inner root was kept but showed empty, which read as a bug). Adding a folder inside one already in the collection (or the same folder) is refused, naming the covering folder, with no dialog. Adding a folder that contains existing ones requires confirmation naming them, and on confirm replaces them in one step. Cancelling leaves the collection unchanged. At creation, nested picks are dropped and the user is told. Collections stored before this change may still hold nested roots; they keep showing each file once (FR-6), with no migration.
 - **Deleting a collection or removing a folder** must delete index and cache entries that no other collection still uses (FR-2, FR-4).
 
 ### Feature 4: Browse by media type
@@ -145,7 +145,7 @@ Each requirement belongs to exactly one feature, or is listed as unassigned with
 - Independently shippable: Feature 1 has no dependencies. Features 2–6 each depend only on Feature 1.
 - Risks:
   - **Feature 8 has the most unmeasured work:** conversion of non-ProRes formats, segment playback, and external-drive speed.
-  - **Feature 3 no longer waits on any open question.** OQ-6 was resolved into FR-5.
+  - **Feature 3 no longer waits on any open question.** OQ-6 was resolved into FR-5 and revised 2026-10-21.
   - **FR-17 spans every feature.** It's assigned to Feature 1, but every later feature can break it. The read-only check from Feature 1 should run in every feature's tests.
   - **Features 1 and 5 share a boundary:** how incremental the scan is.
   - **Features 6, 7 and 8 share the preview pane and the capped cache.**

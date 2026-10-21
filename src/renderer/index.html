@@ -15,10 +15,21 @@
       <ul data-testid="folder-list"></ul>
       <button type="button" data-testid="create-collection">Create collection</button>
       <p data-testid="create-error" role="alert" hidden></p>
+      <p class="create-notice" data-testid="create-notice" role="status" hidden></p>
     </section>
     <section>
       <h2>Collections</h2>
       <ul data-testid="collection-list"></ul>
+    </section>
+    <section data-testid="manage-panel" hidden>
+      <h2>Manage collection</h2>
+      <label>Name <input type="text" data-testid="rename-input" disabled /></label>
+      <button type="button" data-testid="rename-button" disabled>Rename</button>
+      <ul data-testid="manage-folders"></ul>
+      <button type="button" data-testid="add-folder-button" disabled>Add folder</button>
+      <button type="button" data-testid="delete-collection-button" disabled>Delete collection</button>
+      <p class="manage-error" data-testid="manage-error" role="alert" hidden></p>
+      <p class="manage-notice" data-testid="manage-notice" role="status" hidden></p>
     </section>
     <section>
       <h2>Tree</h2>
@@ -33,11 +44,14 @@
       <p class="reveal-error" data-testid="reveal-error" role="alert" hidden></p>
     </section>
     <script src="renderer.js"></script>
+    <script src="../shared/path-compare.js"></script>
     <script src="../shared/tree-model.js"></script>
     <script src="tree-view.js"></script>
     <script src="../shared/file-detail.js"></script>
     <script src="file-detail.js"></script>
     <script src="create-collection.js"></script>
+    <script src="collection-busy.js"></script>
+    <script src="collection-manage.js"></script>
     <script src="rescan-button.js"></script>
   </body>
 </html>

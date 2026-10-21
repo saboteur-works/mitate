@@ -139,3 +139,44 @@ test('Rescan stays disabled for a collection whose rescan is running, even after
     fs.rmSync(userDataDir, { recursive: true, force: true });
   }
 });
+
+// The shared renderer state (window.CollectionBusy, Task 15) reports the collection busy while its
+// rescan is held in the main process and not busy after release; collection-busy-changed fires once
+// per begin and once per end, with detail.collectionId.
+test('CollectionBusy.isBusy is true while a rescan is held and false after release', async () => {
+  const userDataDir = newUserDataDir('rescan-shared-busy-e2e');
+  const fixture = buildFixtureTree();
+  let session;
+  try {
+    const storage = openStorage({ location: { baseDir: userDataDir } });
+    await createCollectionService({ storage }).createCollection('Busy', [fixture.root]);
+
+    session = await launchApp(userDataDir);
+    const { app, window } = session;
+    const gate = await gateChannel(app, CHANNELS.rescanCollection);
+    await selectOnlyCollection(window);
+    const collectionId = await window.evaluate(() => {
+      window.__busyEvents = [];
+      document.addEventListener('collection-busy-changed', (e) => window.__busyEvents.push(e.detail.collectionId));
+      return document.querySelector('[data-testid="collection-item"]').dataset.collectionId;
+    });
+
+    const rescan = window.getByTestId('rescan');
+    await expect(rescan).toBeEnabled();
+    expect(await window.evaluate((c) => window.CollectionBusy.isBusy(c), collectionId)).toBe(false);
+
+    await rescan.click();
+    await expect(rescan).toBeDisabled();
+    expect(await window.evaluate((c) => window.CollectionBusy.isBusy(c), collectionId)).toBe(true);
+    expect(await window.evaluate(() => window.__busyEvents)).toEqual([collectionId]);
+
+    await gate.release();
+    await expect(window.getByTestId('rescan-status')).toContainText('Rescanned 1 folders', { timeout: 30000 });
+    expect(await window.evaluate((c) => window.CollectionBusy.isBusy(c), collectionId)).toBe(false);
+    expect(await window.evaluate(() => window.__busyEvents)).toEqual([collectionId, collectionId]);
+  } finally {
+    if (session) await session.app.close();
+    cleanupFixtureTree(fixture.root);
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  }
+});

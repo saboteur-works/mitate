@@ -4,11 +4,14 @@
  * Rescan service (FR-20, FR-4, FR-13). Main-process logic with no Electron
  * imports; storage and the scan function are injected.
  *
- *   createRescanService({ storage, scan = runScan })
+ *   createRescanService({ storage, scan = defaultScan, guard })
  *     rescanCollection(collectionId)
  *       -> Promise<{collection, folders, files, summary: {rescanned, skipped}}>
  *          Rejects with an Error whose `code === RESCAN_IN_PROGRESS` when a rescan
- *          of the same collection is already running (see below).
+ *          of the same collection is already running (see below), and with
+ *          COLLECTION_BUSY when another operation (e.g. 'add-folder') holds the
+ *          collection in the shared in-flight guard.
+ *     `guard` is optional; without one the service creates its own.
  *
  * Decisions:
  * - The view part has the same shape as collectionService.getCollectionView
@@ -30,11 +33,13 @@
  *   skipped and no flag changes (e.g. already-unavailable folders stay
  *   unavailable) makes no mutation and writes zero times. If applying fails,
  *   nothing is written and the in-memory state is rolled back.
- * - In-flight rescans are tracked per collection id. A second rescanCollection
+ * - In-flight operations are tracked per collection id by the in-flight guard
+ *   (in-flight.js), shared with management actions. A second rescanCollection
  *   of the same collection while the first is pending rejects at once with an
- *   Error (code RESCAN_IN_PROGRESS) and does not run discovery; a rescan of a
- *   different collection is not blocked. The marker is cleared in a finally,
- *   so it is released on success and on failure.
+ *   Error (code RESCAN_IN_PROGRESS); if the holder is another kind the error is
+ *   COLLECTION_BUSY. Neither runs discovery; a rescan of a different
+ *   collection is not blocked. The hold is released in a finally, so it is
+ *   released on success and on failure.
  * - Nothing here runs on launch; the stored index is shown without scanning
  *   (service.js).
  * - Only reads collection folders (the scan); never writes there.
@@ -43,12 +48,12 @@
 
 const { collectionView } = require('./service.js');
 const { defaultScan, scanFolder } = require('./folder-access.js');
+const { createInFlightGuard, COLLECTION_BUSY } = require('./in-flight.js');
 
 const RESCAN_IN_PROGRESS = 'RESCAN_IN_PROGRESS';
 
-function createRescanService({ storage, scan = defaultScan } = {}) {
+function createRescanService({ storage, scan = defaultScan, guard = createInFlightGuard() } = {}) {
   if (!storage) throw new Error('storage is required');
-  const inFlight = new Set();
 
   // Awaited phase (no storage writes): scan one folder. A rejecting scan
   // (missing, unreadable or not a directory) yields unavailable: true.
@@ -74,12 +79,15 @@ function createRescanService({ storage, scan = defaultScan } = {}) {
   async function rescanCollection(collectionId) {
     const collection = storage.getCollection(collectionId);
     if (!collection) throw new Error(`unknown collection: ${collectionId}`);
-    if (inFlight.has(collectionId)) {
+    let release;
+    try {
+      release = guard.acquire(collectionId, 'rescan');
+    } catch (e) {
+      if (e.code !== COLLECTION_BUSY || guard.holder(collectionId) !== 'rescan') throw e;
       const err = new Error('A rescan of this collection is already in progress');
       err.code = RESCAN_IN_PROGRESS;
       throw err;
     }
-    inFlight.add(collectionId);
     try {
       const summary = { rescanned: [], skipped: [] };
       const results = [];
@@ -93,7 +101,7 @@ function createRescanService({ storage, scan = defaultScan } = {}) {
       if (!view) throw new Error(`collection ${collectionId} no longer exists`);
       return { ...view, summary };
     } finally {
-      inFlight.delete(collectionId);
+      release();
     }
   }
 

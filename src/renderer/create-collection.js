@@ -8,6 +8,7 @@
   const folderList = document.querySelector('[data-testid="folder-list"]');
   const collectionList = document.querySelector('[data-testid="collection-list"]');
   const errorBox = document.querySelector('[data-testid="create-error"]');
+  const noticeBox = document.querySelector('[data-testid="create-notice"]');
 
   let folders = [];
 
@@ -16,6 +17,12 @@
   function showError(message) {
     errorBox.textContent = message;
     errorBox.hidden = !message;
+  }
+
+  // FR-8: tells which nested picks were left out of the created collection.
+  function showNotice(message) {
+    noticeBox.textContent = message;
+    noticeBox.hidden = !message;
   }
 
   function renderFolders() {
@@ -72,14 +79,20 @@
     document.dispatchEvent(new CustomEvent('collection-selected', { detail: { collectionId } }));
   }
 
+  // Orders refreshCollections calls: only the latest one renders.
+  let refreshToken = 0;
+
   async function refreshCollections() {
+    const token = ++refreshToken;
     const result = await api.listCollections();
+    if (token !== refreshToken) return;
     if (!result.ok) return showError(result.error);
     renderCollections(result.summaries);
   }
 
   addButton.addEventListener('click', async () => {
     showError('');
+    showNotice('');
     const result = await api.pickFolders();
     if (result.canceled) return;
     for (const p of result.paths) if (!folders.includes(p)) folders.push(p);
@@ -93,6 +106,7 @@
   createButton.addEventListener('click', async () => {
     if (creating) return;
     showError('');
+    showNotice('');
     if (nameInput.value.trim() === '') return showError('Collection name must not be empty');
     creating = true;
     createButton.disabled = true;
@@ -103,6 +117,8 @@
       nameInput.value = '';
       renderFolders();
       await refreshCollections();
+      // FR-8: nested picks that were left out; the text comes from the main process.
+      showNotice(result.notice || '');
     } catch (err) {
       showError(messageOf(err));
     } finally {
@@ -110,6 +126,20 @@
       createButton.disabled = false;
     }
   });
+
+  // The shown collection was deleted: clear the tree (which announces a cleared file
+  // selection) and announce that no collection is selected. A pending select is
+  // invalidated so it cannot bring the deleted collection back.
+  document.addEventListener('collection-deleted', (event) => {
+    if (event.detail.collectionId !== selectedCollectionId) return;
+    latestSelectToken++;
+    selectedCollectionId = null;
+    highlightSelected();
+    window.TreeView.show([], []);
+    document.dispatchEvent(new CustomEvent('collection-selected', { detail: { collectionId: null } }));
+  });
+
+  document.addEventListener('collections-changed', refreshCollections);
 
   refreshCollections();
 })();

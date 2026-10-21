@@ -2,7 +2,7 @@
 
 A read-only desktop lens over folders you already have. You group folders into named collections, and the app indexes every supported media file inside them, however deeply nested, and shows the folder tree. It never moves, renames, edits or deletes a file. See [docs/concept.md](docs/concept.md) for the full concept.
 
-Current state: Feature 1, "index a folder collection and browse its tree" ([spec](specs/features/collection-index-tree.md)), and Feature 2, "File location and Reveal in Finder" ([spec](specs/features/location-reveal.md)). It is an Electron app (Electron 44, macOS first) with:
+Current state: Feature 1, "index a folder collection and browse its tree" ([spec](specs/features/collection-index-tree.md)), Feature 2, "File location and Reveal in Finder" ([spec](specs/features/location-reveal.md)), and Feature 3, "Manage and switch between collections" ([spec](specs/features/collection-management.md)). It is an Electron app (Electron 44, macOS first) with:
 
 - create a collection from folders chosen in a directory-only picker
 - folder discovery of supported media files, run in a worker thread
@@ -11,6 +11,11 @@ Current state: Feature 1, "index a folder collection and browse its tree" ([spec
 - collections and their index persisted as JSON in the app's own user-data directory
 - select a file in the tree by click or keyboard; its full absolute path is shown below the tree
 - a "Reveal in Finder" button for the selected file, with error messages for a missing file and for a file that cannot be checked (see [Reveal in Finder](#reveal-in-finder)); the hands-on check of the real reveal was run on 2026-10-20 (internal drive and an external USB thumb drive passed per the user's report; network volume not run), see [the record](docs/measurements/reveal-in-finder.md)
+- a management panel for the selected collection: rename, folder list with Remove folder, Add folder, and Delete collection (see [Collection management](#collection-management))
+- overlap rules, in the main process: adding a folder that is inside or identical to a folder of the collection is refused, adding a folder that contains existing ones asks once and replaces them, and creating a collection drops picks nested inside other picks and tells you which
+- a file reachable through nested or identical folders of one collection appears once in the tree (a safety net for collections stored before these rules, with no migration)
+- the same folder can be in several collections, each with its own folder record and index
+- while a collection's scan runs, its management controls are disabled and the main process refuses them
 
 ## Install
 
@@ -64,7 +69,7 @@ The tests launch the app through `tests/support/background-main.js` (the path is
 | Path | Contents |
 | --- | --- |
 | `src/main/` | Electron main process: `main.js`, `startup.js`, `preload.js`, `ipc.js`, and the `collections/`, `discovery/`, `registry/` and `storage/` modules |
-| `src/renderer/` | Renderer: `index.html`, `styles.css`, create-collection UI, tree view, rescan button |
+| `src/renderer/` | Renderer: `index.html`, `styles.css`, create-collection UI, tree view, rescan button, collection management panel |
 | `src/shared/` | Code shared by main and renderer (`tree-model.js`) |
 | `tools/readonly-check/` | Reusable read-only check (see below) |
 | `tools/atime-measurement/` | Script that records whether a plain `cat` read changes a file's access time |
@@ -72,7 +77,7 @@ The tests launch the app through `tests/support/background-main.js` (the path is
 | `tools/scan-speed/` | Scripts that measure scan wall time and peak RSS (see below) |
 | `tools/format-probe/` | Format-support probes behind [docs/research/format-support.md](docs/research/format-support.md) |
 | `tests/unit/`, `tests/e2e/` | Vitest and Playwright tests |
-| `tests/support/` | Test helpers, including the fixture-tree builder (`fixture-tree.js`), the background Electron entry (`background-main.js`, `app-entry.js`), the e2e app launcher and helpers (`e2e-app.js`), the IPC handler wrapper used by e2e tests (`ipc-wrap.js`) and `counting-fs.js` |
+| `tests/support/` | Test helpers, including the fixture-tree builder (`fixture-tree.js`), the background Electron entry (`background-main.js`, `app-entry.js`), the e2e app launcher and helpers (`e2e-app.js`), the IPC handler wrapper used by e2e tests (`ipc-wrap.js`), `counting-fs.js`, `scan-hold.js` (holds one scan worker's events in the main process for busy-state tests) and the `dialog.showMessageBox` stub in `background-main.js` (see [Collection management](#collection-management)) |
 | `docs/` | Concept, research and measurement records |
 | `specs/` | Product and feature specs |
 
@@ -85,6 +90,29 @@ The action only reveals; it does not modify files. It reveals only a path that i
 The e2e tests do not call the real reveal. `tests/support/background-main.js` gives the app a `shell` whose `showItemInFolder` records the path into `globalThis.__moReveals` and never calls the real one, also when `MO_E2E_VISIBLE=1`. Tests read the recorded calls with `revealCalls(app)` and clear them with `resetRevealCalls(app)`, both from `tests/support/e2e-app.js`. The real channel checks still run.
 
 The hands-on check of the real reveal on macOS was run on 2026-10-20 on the internal drive and on an external USB thumb drive; both passed per the user's report. The network volume was not run. The record is in [docs/measurements/reveal-in-finder.md](docs/measurements/reveal-in-finder.md).
+
+## Collection management
+
+Select a collection to open its management panel. No collection is active at launch, and the active collection is not remembered between launches.
+
+- **Rename**: the name is trimmed and an empty name is refused. Duplicate names are allowed.
+- **Folders**: the panel lists the collection's folders, each with a Remove folder button. Removing the last folder is refused with a message suggesting deleting the collection instead.
+- **Add folder**: opens a directory-only picker; each picked folder is added in order, and only the new folder is scanned.
+- **Delete collection**: always asks for confirmation, and the message says no files on disk are touched. Deleting the active collection leaves no collection active and clears the tree.
+
+The overlap rules run in the main process. Paths are compared after resolving symlinks and taking the on-disk case (a case-insensitive volume treats `Photos` and `photos` as one folder, a case-sensitive one keeps them apart), by whole folder names.
+
+- **Inside or identical**: adding a folder that is inside a folder of the collection, or the same folder, is refused with a message naming the covering folder. There is no dialog and nothing is written or scanned.
+- **Containing**: adding a folder that contains folders already in the collection asks for confirmation ("Replace folders"). On confirm the new folder is scanned and replaces the contained folders in one step (their records, index entries and access data are removed), and a notice names the replaced folders. Cancelling writes nothing. Files on disk are never touched.
+- **Creation**: picks that lie inside another pick (or repeat one) are dropped, with no dialog, and a notice names each dropped folder and the folder that covers it.
+
+Collections stored before these rules may still hold nested or identical folders. A file reachable through them appears once, under the outer (containing) folder, and every folder is still shown; nothing is migrated or rewritten.
+
+The same folder may be in several collections. Each collection keeps its own folder record and index, so a shared folder is scanned and stored once per collection. The store format is unchanged (version 1); a version-1 store written before this feature opens unchanged, tested with a fixture generated by pre-feature code in `tests/fixtures/v1-store`.
+
+While a collection's rescan or add-folder scan runs, its rename, add, remove and delete controls are disabled and the main process refuses them with the error code `COLLECTION_BUSY`.
+
+Test helpers: `tests/support/background-main.js` replaces `dialog.showMessageBox` so no real dialog is shown. `stubConfirm(app, [bool...])` (from `tests/support/e2e-app.js`) sets the answers in order (true confirms); the default answer is Cancel. `confirmCalls(app)` returns the recorded calls. `tests/support/scan-hold.js` exports `holdNextScan(app)`, which holds the next scan worker's events in the main process until released, so a test can act while a scan is in flight. An e2e read-only check around every management flow (`tests/e2e/management-readonly.spec.js`) reported no differences, including 0 access-time differences in those runs.
 
 ## Read-only check
 

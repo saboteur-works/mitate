@@ -133,7 +133,17 @@ const revealCalls = (app) => app.evaluate(() => [...globalThis.__moReveals]);
 // Empties the recorded reveal calls.
 const resetRevealCalls = (app) => app.evaluate(() => { globalThis.__moReveals.length = 0; });
 
+// Queues the answers of the next dialog.showMessageBox calls (true = the
+// confirm button, false = Cancel), consumed in order; replaces any answers not
+// yet consumed. With the queue empty a dialog answers Cancel. The stub is in
+// tests/support/background-main.js.
+const stubConfirm = (app, answers) =>
+  app.evaluate((_electron, list) => { globalThis.__moConfirmAnswers = [...list]; }, answers);
+
+// Option objects passed to dialog.showMessageBox since launch, in call order.
+const confirmCalls = (app) => app.evaluate(() => [...globalThis.__moConfirms]);
+
 module.exports = {
   newUserDataDir, launchApp, rowAt, selectOnlyCollection, stubFolderPicker, gateChannel,
-  revealCalls, resetRevealCalls,
+  revealCalls, resetRevealCalls, stubConfirm, confirmCalls,
 };

@@ -210,3 +210,160 @@ describe('node ids with overlapping roots', () => {
     expect(ids(new Set([rootA.id, subB.id]))).toEqual(['fa:', 'fa:b', 'fa:b/x.jpg', 'fb:']);
   });
 });
+
+describe('buildTree de-duplication across overlapping roots', () => {
+  const walk = (nodes, out = []) => {
+    for (const n of nodes) {
+      out.push(n);
+      if (n.children) walk(n.children, out);
+    }
+    return out;
+  };
+  const filesUnder = (tree, folderId) =>
+    walk(tree)
+      .filter((n) => n.type === 'file' && n.folderId === folderId)
+      .map((n) => n.relativePath);
+  const rootOf = (tree, id) => tree.find((n) => n.id === id + ':');
+
+  // /m holds sub/x.jpg and /m/sub holds x.jpg: the same file.
+  const outer = folder('m', '/m');
+  const inner = folder('s', '/m/sub');
+  const outerFiles = [file('m', '/m', 'sub/x.jpg'), file('m', '/m', 'top.jpg')];
+  const innerFiles = [file('s', '/m/sub', 'x.jpg')];
+
+  it('shows the file under the outer root only and still returns the empty inner root', () => {
+    const tree = buildTree([outer, inner], [...outerFiles, ...innerFiles]);
+    expect(filesUnder(tree, 'm')).toEqual(['sub/x.jpg', 'top.jpg']);
+    expect(filesUnder(tree, 's')).toEqual([]);
+    expect(tree).toHaveLength(2);
+    expect(rootOf(tree, 's').children).toEqual([]);
+  });
+
+  it('gives the same tree when the outer root is given last', () => {
+    const a = buildTree([outer, inner], [...outerFiles, ...innerFiles]);
+    const b = buildTree([inner, outer], [...innerFiles, ...outerFiles]);
+    expect(b).toEqual(a);
+  });
+
+  it('keeps the file under the earlier of two identical-path roots', () => {
+    const r1 = folder('r1', '/same');
+    const r2 = folder('r2', '/same');
+    const files = [file('r1', '/same', 'a.jpg'), file('r2', '/same', 'a.jpg')];
+    let tree = buildTree([r1, r2], files);
+    expect(filesUnder(tree, 'r1')).toEqual(['a.jpg']);
+    expect(filesUnder(tree, 'r2')).toEqual([]);
+    tree = buildTree([r2, r1], files);
+    expect(filesUnder(tree, 'r2')).toEqual(['a.jpg']);
+    expect(filesUnder(tree, 'r1')).toEqual([]);
+  });
+
+  it('shows each file once under the outermost root that has a record, with three nested roots', () => {
+    const f = [folder('a', '/a'), folder('b', '/a/b'), folder('c', '/a/b/c')];
+    const files = [
+      file('a', '/a', 'b/c/1.jpg'),
+      file('b', '/a/b', 'c/1.jpg'),
+      file('c', '/a/b/c', '1.jpg'),
+      // 2.jpg is not in /a's index: the middle root owns it.
+      file('b', '/a/b', 'c/2.jpg'),
+      file('c', '/a/b/c', '2.jpg'),
+    ];
+    const tree = buildTree(f, files);
+    expect(filesUnder(tree, 'a')).toEqual(['b/c/1.jpg']);
+    expect(filesUnder(tree, 'b')).toEqual(['c/2.jpg']);
+    expect(filesUnder(tree, 'c')).toEqual([]);
+  });
+
+  it('keeps a file under the inner root when the outer root has no record of it (stale outer index)', () => {
+    const tree = buildTree([outer, inner], [file('m', '/m', 'top.jpg'), ...innerFiles]);
+    expect(filesUnder(tree, 'm')).toEqual(['top.jpg']);
+    expect(filesUnder(tree, 's')).toEqual(['x.jpg']);
+  });
+
+  it('does not let /a/b and /a/bc interact', () => {
+    const f = [folder('p', '/a/b'), folder('q', '/a/bc')];
+    const files = [file('p', '/a/b', 'x.jpg'), file('q', '/a/bc', 'x.jpg')];
+    const tree = buildTree(f, files);
+    expect(filesUnder(tree, 'p')).toEqual(['x.jpg']);
+    expect(filesUnder(tree, 'q')).toEqual(['x.jpg']);
+  });
+
+  it('keeps case-different roots apart (a case-sensitive volume has two folders)', () => {
+    const f = [folder('u', '/A/B'), folder('l', '/a/b')];
+    const files = [file('u', '/A/B', 'x.jpg'), file('l', '/a/b', 'x.jpg')];
+    const tree = buildTree(f, files);
+    expect(filesUnder(tree, 'u')).toEqual(['x.jpg']);
+    expect(filesUnder(tree, 'l')).toEqual(['x.jpg']);
+  });
+
+  it('treats roots whose resolvedPath is the same on-disk case as identical, whatever path says', () => {
+    const f = [
+      { ...folder('u', '/A/B'), resolvedPath: '/a/b' },
+      { ...folder('l', '/a/b'), resolvedPath: '/a/b' },
+    ];
+    const files = [file('u', '/A/B', 'x.jpg'), file('l', '/a/b', 'x.jpg')];
+    const tree = buildTree(f, files);
+    expect(filesUnder(tree, 'u')).toEqual(['x.jpg']);
+    expect(filesUnder(tree, 'l')).toEqual([]);
+  });
+
+  it('treats roots with different paths but equal resolvedPath as identical', () => {
+    const f = [
+      { ...folder('r1', '/link'), resolvedPath: '/real' },
+      { ...folder('r2', '/real'), resolvedPath: '/real' },
+    ];
+    const files = [file('r1', '/link', 'x.jpg'), file('r2', '/real', 'x.jpg')];
+    const tree = buildTree(f, files);
+    expect(filesUnder(tree, 'r1')).toEqual(['x.jpg']);
+    expect(filesUnder(tree, 'r2')).toEqual([]);
+  });
+
+  it('uses path when a root has no resolvedPath, and resolvedPath for nesting when present', () => {
+    const f = [
+      { ...folder('o', '/link-o'), resolvedPath: '/real/o' },
+      { ...folder('i', '/elsewhere/i'), resolvedPath: '/real/o/i' },
+    ];
+    const files = [file('o', '/real/o', 'i/x.jpg'), file('i', '/real/o/i', 'x.jpg')];
+    const tree = buildTree(f, files);
+    expect(filesUnder(tree, 'i')).toEqual([]);
+    const plain = buildTree([folder('o', '/real/o'), folder('i', '/real/o/i')], files);
+    expect(filesUnder(plain, 'i')).toEqual([]);
+  });
+
+  it('keeps ids as <rootFolderId>:<relativePath> and unique across roots', () => {
+    const tree = buildTree([outer, inner], [...outerFiles, ...innerFiles]);
+    const ids = walk(tree).map((n) => n.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toContain('m:sub/x.jpg');
+    expect(ids).toContain('s:');
+  });
+
+  it('shows the file under the inner root once the outer root is removed', () => {
+    const tree = buildTree([inner], [...innerFiles]);
+    expect(filesUnder(tree, 's')).toEqual(['x.jpg']);
+  });
+
+  it('is deterministic for the same input', () => {
+    const args = [[outer, inner], [...outerFiles, ...innerFiles]];
+    expect(buildTree(...args)).toEqual(buildTree(...args));
+  });
+
+  it('lets an unavailable outer root own the file', () => {
+    const tree = buildTree([folder('m', '/m', true), inner], [...outerFiles, ...innerFiles]);
+    expect(filesUnder(tree, 'm')).toEqual(['sub/x.jpg', 'top.jpg']);
+    expect(filesUnder(tree, 's')).toEqual([]);
+  });
+
+  it('builds 20,000 records across two overlapping roots within 2 seconds', () => {
+    const n = 10000;
+    const of = [];
+    const inf = [];
+    for (let i = 0; i < n; i++) {
+      of.push(file('m', '/m', `sub/f${i}.jpg`));
+      inf.push(file('s', '/m/sub', `f${i}.jpg`));
+    }
+    const start = Date.now();
+    const tree = buildTree([outer, inner], [...of, ...inf]);
+    expect(Date.now() - start).toBeLessThan(2000);
+    expect(filesUnder(tree, 's')).toEqual([]);
+  });
+});

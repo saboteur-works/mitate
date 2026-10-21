@@ -6,7 +6,8 @@
  * Clicking it calls api.rescanCollection(id) and re-renders the tree keeping the
  * expanded folders. Nothing here runs a scan on load.
  *
- * In-flight rescans are tracked per collection id: the button is disabled while
+ * In-flight rescans are tracked per collection id in window.CollectionBusy
+ * (collection-busy.js, shared with other controls): the button is disabled while
  * the SELECTED collection has a rescan running (also after selecting another
  * collection and coming back), and a result for a collection that is no longer
  * selected is not applied to the tree or status.
@@ -15,7 +16,7 @@
   const api = window.mediaOrganizer;
   const button = document.querySelector('[data-testid="rescan"]');
   const status = document.querySelector('[data-testid="rescan-status"]');
-  const inFlight = new Set();
+  const busy = window.CollectionBusy;
   let selectedId = null;
 
   const messageOf = (err) => (err && err.message ? err.message : String(err));
@@ -25,19 +26,22 @@
   }
 
   function syncButton() {
-    button.disabled = selectedId === null || inFlight.has(selectedId);
+    button.disabled = selectedId === null || busy.isBusy(selectedId);
   }
 
   document.addEventListener('collection-selected', (event) => {
     selectedId = event.detail.collectionId;
-    status.textContent = inFlight.has(selectedId) ? 'Rescanning...' : '';
+    status.textContent = busy.holder(selectedId) === 'rescan' ? 'Rescanning...' : '';
     syncButton();
   });
 
+  // Selection sets the text from the holder; the rescan's own result text is set before
+  // its busy state ends, so only the button needs to follow busy changes.
+  document.addEventListener('collection-busy-changed', syncButton);
+
   button.addEventListener('click', async () => {
     const id = selectedId;
-    if (id === null || inFlight.has(id)) return;
-    inFlight.add(id);
+    if (id === null || !busy.begin(id, 'rescan')) return;
     syncButton();
     status.textContent = 'Rescanning...';
     try {
@@ -50,7 +54,7 @@
     } catch (err) {
       if (selectedId === id) fail(messageOf(err));
     } finally {
-      inFlight.delete(id);
+      busy.end(id);
       syncButton();
     }
   });
