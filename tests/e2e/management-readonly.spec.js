@@ -1,15 +1,16 @@
 'use strict';
 
 /*
- * Read-only check around every management flow (Feature 3, Task 27; FR-10, US-3).
+ * Read-only check around every management flow (Feature 3, Tasks 27 and 39; FR-10, US-3).
  *
- * Fixture tree -> two collections over it through the service (Alpha: the root; Beta: Docs and
- * Music inside it) -> read-only snapshot 'before' (app closed) -> launch, rename, switch, add folder
- * (overlapping), add folder again (overlapping), remove folder, create a collection with
- * overlapping folders, delete a collection, quit -> snapshot 'after' (app closed) -> assert no
- * non-atime differences. Access-time differences never fail the test; they are attached to the
- * test output and logged. The first test confirms every confirmation, the second cancels every one.
- * The folder picker and the confirmation dialog are stubbed in the main process.
+ * Fixture tree -> two collections over it through the service (Alpha: the root; Beta: Docs, Music
+ * and Photos/2024 inside it) -> read-only snapshot 'before' (app closed) -> launch, rename, switch,
+ * add a subfolder of the root (refused, FOLDER_COVERED), add Photos to Beta (replace on contains,
+ * the confirmation answered), remove folder, create a collection from nested picks (the inner one
+ * is dropped with a notice, no confirmation), delete a collection, quit -> snapshot 'after' (app
+ * closed) -> assert no non-atime differences. Access-time differences never fail the test; they are
+ * attached to the test output and logged. The first test confirms every confirmation, the second
+ * cancels every one. The folder picker and the confirmation dialog are stubbed in the main process.
  */
 
 const fs = require('node:fs');
@@ -43,7 +44,7 @@ async function selectByName(window, name) {
   await expect(window.getByTestId('rename-input')).toHaveValue(name);
 }
 
-// Adds `pick` to the selected collection through the panel and answers the overlap confirmation
+// Adds `pick` to the selected collection through the panel and answers the replace confirmation
 // with `ok`. Resolves once the add has finished (controls enabled again).
 async function addFolder(app, window, pick, ok, callsSoFar) {
   await stubFolderPicker(app, [pick]);
@@ -70,7 +71,7 @@ async function runSequence(label, ok) {
     const storage = openStorage({ location: { baseDir: userDataDir } });
     const service = createCollectionService({ storage });
     await service.createCollection('Alpha', [root]);
-    await service.createCollection('Beta', [docs, music]);
+    await service.createCollection('Beta', [docs, music, year]);
 
     // Snapshot with the app closed (ordering rule in tools/readonly-check).
     const before = readonlyCheck.snapshot(root, { role: 'before' });
@@ -95,54 +96,65 @@ async function runSequence(label, ok) {
     await expect(rowAt(window, docs)).toBeVisible({ timeout: 30000 });
     await expect(rowAt(window, music)).toBeVisible();
     await expect(rowAt(window, root)).toHaveCount(0);
-    expect(await panelPaths()).toEqual([docs, music]);
+    expect(await panelPaths()).toEqual([docs, music, year]);
     await selectByName(window, 'Renamed');
     await expect(rowAt(window, root)).toBeVisible({ timeout: 30000 });
     expect(await panelPaths()).toEqual([root]);
 
-    // Add an inner folder to the renamed collection (overlap: confirmed or cancelled).
-    await addFolder(app, window, photos, ok, calls);
-    calls += 1;
-    await expect(byId('manage-folder-path')).toHaveText(ok ? [root, photos] : [root]);
-    await expect(itemNamed(window, 'Renamed')).toContainText(ok ? '(2 folders)' : '(1 folders)');
+    // Add a subfolder of the root to the renamed collection: refused, nothing asked, nothing written.
+    await stubFolderPicker(app, [photos]);
+    await stubConfirm(app, [ok]);
+    await byId('add-folder-button').click();
+    await expect(byId('manage-error')).toBeVisible({ timeout: 30000 });
+    await expect(byId('manage-error')).toContainText('already covered');
+    await expect(byId('manage-error')).toContainText(root);
+    await expect(byId('add-folder-button')).toBeEnabled({ timeout: 30000 });
+    await expect(byId('manage-notice')).toBeHidden();
+    expect(await panelPaths()).toEqual([root]);
+    await expect(itemNamed(window, 'Renamed')).toContainText('(1 folders)');
+    expect(await confirmCalls(app)).toEqual([]);
 
-    // Add the containing root to Beta (overlap: confirmed or cancelled).
+    // Add Photos to Beta, which holds Photos/2024: replace on contains (confirmed or cancelled).
     await selectByName(window, 'Beta');
     await expect(rowAt(window, docs)).toBeVisible({ timeout: 30000 });
-    await addFolder(app, window, root, ok, calls);
+    await addFolder(app, window, photos, ok, calls);
     calls += 1;
-    await expect(byId('manage-folder-path')).toHaveText(ok ? [docs, music, root] : [docs, music]);
+    await expect(byId('manage-folder-path')).toHaveText(ok ? [docs, music, photos] : [docs, music, year]);
+    if (ok) {
+      await expect(byId('manage-notice')).toBeVisible();
+      await expect(byId('manage-notice')).toContainText(year);
+      await expect(rowAt(window, photos)).toBeVisible();
+      await expect(rowAt(window, year)).toHaveCount(0);
+    } else {
+      await expect(byId('manage-notice')).toBeHidden();
+      await expect(rowAt(window, year)).toBeVisible();
+    }
 
     // Remove a folder from Beta (no confirmation).
     await byId('manage-folder')
       .filter({ has: byId('manage-folder-path').getByText(music, { exact: true }) })
       .getByTestId('remove-folder')
       .click();
-    await expect(byId('manage-folder-path')).toHaveText(ok ? [docs, root] : [docs]);
-    if (!ok) await expect(rowAt(window, music)).toHaveCount(0);
+    await expect(byId('manage-folder-path')).toHaveText(ok ? [docs, photos] : [docs, year]);
+    await expect(rowAt(window, music)).toHaveCount(0);
 
-    // Create a collection with overlapping folders (confirmed or cancelled).
+    // Create a collection from nested picks: the inner pick is dropped with a notice, no confirmation.
     await stubFolderPicker(app, [photos, year]);
-    await stubConfirm(app, [ok]);
     await byId('add-folder').click();
     await byId('collection-name').fill('Gamma');
     await expect(byId('folder-item')).toHaveCount(2);
     await byId('create-collection').click();
-    await expect.poll(async () => (await confirmCalls(app)).length, { timeout: 30000 }).toBe(calls + 1);
-    calls += 1;
-    if (ok) {
-      await expect(itemNamed(window, 'Gamma')).toHaveCount(1, { timeout: 30000 });
-      await expect(itemNamed(window, 'Gamma').getByTestId('collection-folder-count')).toHaveText('2');
-      await expect(byId('folder-item')).toHaveCount(0);
-    } else {
-      await expect(byId('create-collection')).toBeEnabled({ timeout: 30000 });
-      await expect(byId('collection-item')).toHaveCount(2);
-      await expect(byId('folder-item')).toHaveCount(2);
-      await expect(byId('collection-name')).toHaveValue('Gamma');
-    }
+    await expect(itemNamed(window, 'Gamma')).toHaveCount(1, { timeout: 30000 });
+    await expect(itemNamed(window, 'Gamma').getByTestId('collection-folder-count')).toHaveText('1');
+    await expect(byId('create-notice')).toBeVisible();
+    await expect(byId('create-notice')).toContainText(year);
+    await expect(byId('create-notice')).toContainText(photos);
+    await expect(byId('folder-item')).toHaveCount(0);
+    await expect(byId('collection-item')).toHaveCount(3);
+    expect(await confirmCalls(app)).toHaveLength(calls);
 
-    // Delete a collection (confirmed: Gamma; cancelled: Beta stays).
-    await selectByName(window, ok ? 'Gamma' : 'Beta');
+    // Delete a collection (confirmed: Gamma goes; cancelled: Gamma stays).
+    await selectByName(window, 'Gamma');
     await stubConfirm(app, [ok]);
     await byId('delete-collection-button').click();
     await expect.poll(async () => (await confirmCalls(app)).length, { timeout: 30000 }).toBe(calls + 1);
@@ -152,19 +164,19 @@ async function runSequence(label, ok) {
       await expect(byId('collection-item')).toHaveCount(2);
     } else {
       await expect(byId('delete-collection-button')).toBeEnabled();
-      await expect(itemNamed(window, 'Beta')).toHaveCount(1);
-      await expect(byId('collection-item')).toHaveCount(2);
+      await expect(itemNamed(window, 'Gamma')).toHaveCount(1);
+      await expect(byId('collection-item')).toHaveCount(3);
     }
-    expect(await confirmCalls(app)).toHaveLength(4);
+    expect(await confirmCalls(app)).toHaveLength(2);
 
     await app.close();
     session = null;
 
     // The completed steps reached the store (confirmed run) or did not (cancelled run).
     expect(storedPaths(userDataDir, 'Alpha')).toBeNull();
-    expect(storedPaths(userDataDir, 'Renamed')).toEqual(ok ? [root, photos] : [root]);
-    expect(storedPaths(userDataDir, 'Beta')).toEqual(ok ? [docs, root] : [docs]);
-    expect(storedPaths(userDataDir, 'Gamma')).toBeNull();
+    expect(storedPaths(userDataDir, 'Renamed')).toEqual([root]);
+    expect(storedPaths(userDataDir, 'Beta')).toEqual(ok ? [docs, photos] : [docs, year]);
+    expect(storedPaths(userDataDir, 'Gamma')).toEqual(ok ? null : [photos]);
 
     const after = readonlyCheck.snapshot(root, { role: 'after' });
     const atime = readonlyCheck.compare(before, after).atime;
@@ -181,7 +193,7 @@ async function runSequence(label, ok) {
   }
 }
 
-test('rename, switch, add, remove, create with overlap and delete, all confirmed, leave the fixture tree unchanged', async () => {
+test('rename, switch, refused add, replace, remove, create from nested picks and delete, all confirmed, leave the fixture tree unchanged', async () => {
   await runSequence('confirm', true);
 });
 
