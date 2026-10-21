@@ -100,7 +100,7 @@ Select a collection to open its management panel. No collection is active at lau
 - **Add folder**: opens a directory-only picker; each picked folder is added in order, and only the new folder is scanned.
 - **Delete collection**: always asks for confirmation, and the message says no files on disk are touched. Deleting the active collection leaves no collection active and clears the tree.
 
-The overlap rules run in the main process. Paths are compared after resolving symlinks, case-insensitively, by whole folder names.
+The overlap rules run in the main process. Paths are compared after resolving symlinks and taking the on-disk case (a case-insensitive volume treats `Photos` and `photos` as one folder, a case-sensitive one keeps them apart), by whole folder names.
 
 - **Inside or identical**: adding a folder that is inside a folder of the collection, or the same folder, is refused with a message naming the covering folder. There is no dialog and nothing is written or scanned.
 - **Containing**: adding a folder that contains folders already in the collection asks for confirmation ("Replace folders"). On confirm the new folder is scanned and replaces the contained folders in one step (their records, index entries and access data are removed), and a notice names the replaced folders. Cancelling writes nothing. Files on disk are never touched.

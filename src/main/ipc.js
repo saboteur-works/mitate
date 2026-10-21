@@ -19,6 +19,14 @@
  *                          confirmed add removed because the new folder contains them, [] when none;
  *                          the service asks for confirmation only then. A folder inside or identical
  *                          to one already in the collection is refused with code 'FOLDER_COVERED'.
+ *   collections:addFolders (collectionId, paths) -> { ok: true, view, replaced, dropped, notice }
+ *                          | { ok: false, error, code?, view, replaced, dropped, notice }
+ *                          the multi-pick add used by the panel: one guard acquisition, picks inside or
+ *                          identical to another pick are dropped first (dropped = [{ path, coveredBy }]),
+ *                          the rest are added as by addFolder, in order. The first refusal stops the rest
+ *                          and comes back with the view so far (view is null when nothing was added).
+ *                          replaced = removed folder paths; notice = replaced and dropped texts or null.
+ *                          A cancelled replace confirmation skips that pick.
  *   collections:removeFolder (collectionId, folderId) -> { ok: true, view }
  *                          rename, delete, add and remove fail with code 'COLLECTION_BUSY' while the
  *                          collection has another action in flight (shared guard), remove also with
@@ -60,6 +68,7 @@ const CHANNELS = {
   renameCollection: 'collections:rename',
   deleteCollection: 'collections:delete',
   addFolder: 'collections:addFolder',
+  addFolders: 'collections:addFolders',
   removeFolder: 'collections:removeFolder',
   revealFile: 'files:reveal',
 };
@@ -75,6 +84,7 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, revealFil
     } catch (err) {
       const failure = { ok: false, error: messageOf(err) };
       if (err && err.code) failure.code = err.code;
+      if (err && err.partial) Object.assign(failure, err.partial);
       return failure;
     }
   }
@@ -136,6 +146,13 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, revealFil
       if (result && result.canceled) return { canceled: true };
       const { replaced = [], ...view } = result;
       return { view, replaced };
+    }));
+
+  handle(CHANNELS.addFolders, (_event, collectionId, paths) =>
+    guard(async () => {
+      requireStrings(collectionId);
+      if (!Array.isArray(paths) || !paths.every((p) => typeof p === 'string')) throw new Error('Invalid arguments');
+      return service.addFolders(collectionId, paths);
     }));
 
   handle(CHANNELS.removeFolder, (_event, collectionId, folderId) =>

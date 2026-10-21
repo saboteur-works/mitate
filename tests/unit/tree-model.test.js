@@ -287,8 +287,19 @@ describe('buildTree de-duplication across overlapping roots', () => {
     expect(filesUnder(tree, 'q')).toEqual(['x.jpg']);
   });
 
-  it('treats case-different roots as identical', () => {
+  it('keeps case-different roots apart (a case-sensitive volume has two folders)', () => {
     const f = [folder('u', '/A/B'), folder('l', '/a/b')];
+    const files = [file('u', '/A/B', 'x.jpg'), file('l', '/a/b', 'x.jpg')];
+    const tree = buildTree(f, files);
+    expect(filesUnder(tree, 'u')).toEqual(['x.jpg']);
+    expect(filesUnder(tree, 'l')).toEqual(['x.jpg']);
+  });
+
+  it('treats roots whose resolvedPath is the same on-disk case as identical, whatever path says', () => {
+    const f = [
+      { ...folder('u', '/A/B'), resolvedPath: '/a/b' },
+      { ...folder('l', '/a/b'), resolvedPath: '/a/b' },
+    ];
     const files = [file('u', '/A/B', 'x.jpg'), file('l', '/a/b', 'x.jpg')];
     const tree = buildTree(f, files);
     expect(filesUnder(tree, 'u')).toEqual(['x.jpg']);

@@ -531,6 +531,28 @@ describe('availability check across collections', () => {
   });
 });
 
+describe('availability check of a folder removed while it is pending', () => {
+  it('skips the removed folder instead of failing listCollectionSummaries', async () => {
+    const dirs = ['keep', 'gone'].map((n) => {
+      const d = path.join(work, n);
+      fs.mkdirSync(d);
+      return d;
+    });
+    const storage = openStorage({ location: { file: storageFile } });
+    const svc = createCollectionService({ storage, scan: stubScan });
+    const created = await svc.createCollection('c', dirs);
+    // Both folders turn unreadable, so both flag changes are due when the checks finish.
+    for (const d of dirs) fs.rmdirSync(d);
+    const gone = created.folders[1];
+    const pending = svc.listCollectionSummaries();
+    storage.removeFolder(gone.id); // while the readability checks are pending
+    const summaries = await pending;
+    expect(summaries[0].folders.map((f) => f.path)).toEqual([dirs[0]]);
+    expect(summaries[0].folders[0].unavailable).toBe(true);
+    expect(storage.getFolder(gone.id)).toBeFalsy();
+  });
+});
+
 describe('rescan of a collection removed while it is scanning', () => {
   const { createRescanService } = require('../../src/main/collections/rescan.js');
 
@@ -1378,6 +1400,95 @@ describe('addFolder', () => {
     expect(fresh.listFolders(one.collection.id)).toHaveLength(1);
     expect(fresh.getCollection(one.collection.id).folderIds).toEqual([one.folders[0].id]);
     expect(guard.isBusy(one.collection.id)).toBe(false);
+  });
+});
+
+describe('addFolders', () => {
+  const mk = (...parts) => {
+    const d = path.join(work, ...parts);
+    fs.mkdirSync(d, { recursive: true });
+    return d;
+  };
+
+  async function setup(confirm) {
+    const scans = [];
+    const confirms = [];
+    const storage = openStorage({ location: { file: storageFile } });
+    const svc = createCollectionService({
+      storage,
+      scan: async (dir) => { scans.push(dir); return stubScan(dir); },
+      confirm: async (req) => { confirms.push(req); return confirm ? confirm(req) : true; },
+    });
+    const base = mk('base');
+    const one = await svc.createCollection('One', [base]);
+    scans.length = 0;
+    return { svc, storage, scans, confirms, base, id: one.collection.id };
+  }
+
+  for (const [label, order] of [['outer first', ['a', 'a/b']], ['inner first', ['a/b', 'a']]]) {
+    it(`picks /a and /a/b (${label}): one folder is added, /a/b is dropped, nothing is asked or refused`, async () => {
+      const { svc, storage, scans, confirms, id } = await setup();
+      const a = mk('a');
+      const ab = mk('a', 'b');
+      const result = await svc.addFolders(id, order.map((o) => path.join(work, o)));
+      expect(storage.listFolders(id).map((f) => f.path)).toEqual([path.join(work, 'base'), a]);
+      expect(scans).toEqual([a]);
+      expect(confirms).toEqual([]);
+      expect(result.dropped).toEqual([{ path: ab, coveredBy: a }]);
+      expect(result.notice).toContain(ab);
+      expect(result.replaced).toEqual([]);
+      expect(result.view.folders.map((f) => f.path)).toEqual([path.join(work, 'base'), a]);
+    });
+  }
+
+  it('adds the picks in order and returns notice null when nothing was dropped or replaced', async () => {
+    const { svc, storage, id } = await setup();
+    const x = mk('x');
+    const y = mk('y');
+    const result = await svc.addFolders(id, [y, x]);
+    expect(storage.listFolders(id).map((f) => f.path)).toEqual([path.join(work, 'base'), y, x]);
+    expect(result).toMatchObject({ replaced: [], dropped: [], notice: null });
+  });
+
+  it('a refusal stops the rest and carries the view so far; the first pick stays', async () => {
+    const { svc, storage, base, id } = await setup();
+    const x = mk('x');
+    const z = mk('z');
+    const err = await svc.addFolders(id, [x, mk('base', 'inner'), z]).catch((e) => e);
+    expect(err.code).toBe('FOLDER_COVERED');
+    expect(err.partial.view.folders.map((f) => f.path)).toEqual([base, x]);
+    expect(storage.listFolders(id).map((f) => f.path)).toEqual([base, x]);
+  });
+
+  it('a confirmed replace is listed in replaced and in the notice; a cancelled one adds nothing', async () => {
+    for (const answer of [true, false]) {
+      fs.rmSync(work, { recursive: true, force: true });
+      fs.mkdirSync(work, { recursive: true });
+      const { svc, storage, confirms, id } = await setup(() => answer);
+      const outer = mk('outer');
+      const inner = mk('outer', 'inner');
+      await svc.addFolder(id, inner);
+      confirms.length = 0;
+      const result = await svc.addFolders(id, [outer]);
+      expect(confirms).toHaveLength(1);
+      if (answer) {
+        expect(result.replaced).toEqual([inner]);
+        expect(result.notice).toBe(`${outer} replaced ${inner}.`);
+        expect(storage.listFolders(id).map((f) => f.path)).toContain(outer);
+      } else {
+        expect(result).toMatchObject({ view: null, replaced: [], notice: null });
+        expect(storage.listFolders(id).map((f) => f.path)).toEqual([path.join(work, 'base'), inner]);
+      }
+    }
+  });
+
+  it('releases the guard and refuses a second concurrent add with COLLECTION_BUSY', async () => {
+    const { svc, id } = await setup();
+    const first = svc.addFolders(id, [mk('m')]);
+    const second = await svc.addFolder(id, mk('n')).catch((e) => e);
+    expect(second.code).toBe('COLLECTION_BUSY');
+    await first;
+    await expect(svc.addFolders(id, [mk('o')])).resolves.toMatchObject({ dropped: [] });
   });
 });
 

@@ -42,10 +42,10 @@ describe('findOverlaps', () => {
     expect(findOverlaps('/a/b/', ['/a/b'], { realpath: same }).covered).toBe('/a/b');
   });
 
-  it('case difference: /A/B against /a/b/c is contains', () => {
+  it('raw case difference is not an overlap: /A/B against /a/b/c', () => {
     const r = findOverlaps('/A/B', ['/a/b/c'], { realpath: same });
     expect(r.covered).toBeNull();
-    expect(r.contains).toEqual(['/a/b/c']);
+    expect(r.contains).toEqual([]);
   });
 
   it('identical path is covered by that folder', () => {
@@ -90,8 +90,8 @@ describe('findOverlaps', () => {
     expect(r.covered).toBe('/a/b');
   });
 
-  it('identical is true for an identical path, with a trailing slash and in a different case', () => {
-    for (const c of ['/a/b', '/a/b/', '/A/B']) {
+  it('identical is true for an identical path, also with a trailing slash', () => {
+    for (const c of ['/a/b', '/a/b/']) {
       const r = findOverlaps(c, ['/a/b'], { realpath: same });
       expect(r.identical).toBe(true);
       expect(r.covered).toBe('/a/b');
@@ -224,5 +224,62 @@ describe('describeDropped', () => {
 describe('module exports', () => {
   it('no longer exports describeOverlap', () => {
     expect(overlap.describeOverlap).toBeUndefined();
+  });
+});
+
+// Fakes for the two volume kinds. realpathSync.native returns the on-disk case; a missing path throws.
+describe('case follows the volume (injected realpath)', () => {
+  const onDisk = ['/vol', '/vol/Photos', '/vol/Photos/Sub'];
+  const insensitive = (p) => {
+    const hit = onDisk.find((d) => d.toLowerCase() === p.toLowerCase().replace(/\/+$/, ''));
+    if (!hit) throw new Error('ENOENT');
+    return hit;
+  };
+  const sensitiveDisk = ['/vol', '/vol/Photos', '/vol/photos'];
+  const sensitive = (p) => {
+    if (!sensitiveDisk.includes(p)) throw new Error('ENOENT');
+    return p;
+  };
+
+  it('case-insensitive volume: a variant is canonicalised, so it is identical or inside', () => {
+    const same1 = findOverlaps('/vol/PHOTOS', ['/vol/Photos'], { realpath: insensitive });
+    expect(same1.covered).toBe('/vol/Photos');
+    expect(same1.identical).toBe(true);
+    const inside = findOverlaps('/vol/photos/SUB', ['/vol/Photos'], { realpath: insensitive });
+    expect(inside.covered).toBe('/vol/Photos');
+    expect(inside.identical).toBe(false);
+    expect(describeRefusal(inside, '/vol/photos/SUB')).toContain('already covered');
+  });
+
+  it('case-insensitive volume: dropNested drops a case variant of an earlier pick', () => {
+    const { kept, dropped } = dropNested(['/vol/Photos', '/vol/PHOTOS/sub'], { realpath: insensitive });
+    expect(kept).toEqual(['/vol/Photos']);
+    expect(dropped).toEqual([{ path: '/vol/PHOTOS/sub', coveredBy: '/vol/Photos' }]);
+  });
+
+  it('case-sensitive volume: Photos and photos stay distinct, so an add keeps both', () => {
+    const r = findOverlaps('/vol/photos', ['/vol/Photos'], { realpath: sensitive });
+    expect(r.covered).toBeNull();
+    expect(r.contains).toEqual([]);
+    expect(describeRefusal(r, '/vol/photos')).toBeNull();
+    expect(describeReplace(r, '/vol/photos')).toBeNull();
+  });
+
+  it('case-sensitive volume: Photos and photos stay distinct, so a create keeps both', () => {
+    const { kept, dropped } = dropNested(['/vol/Photos', '/vol/photos'], { realpath: sensitive });
+    expect(kept).toEqual(['/vol/Photos', '/vol/photos']);
+    expect(dropped).toEqual([]);
+  });
+
+  it('a path that cannot be resolved falls back to path.resolve and is compared case-sensitively', () => {
+    const r = findOverlaps('/vol/PHOTOS', ['/vol/Photos'], { realpath: sensitive });
+    expect(r.covered).toBeNull();
+    expect(r.contains).toEqual([]);
+  });
+
+  it('describeReplaced words what a confirmed add removed, null when nothing', () => {
+    expect(overlap.describeReplaced([{ path: '/a', replaced: ['/a/b', '/a/c'] }])).toBe('/a replaced /a/b, /a/c.');
+    expect(overlap.describeReplaced([])).toBeNull();
+    expect(overlap.describeReplaced([{ path: '/a', replaced: [] }])).toBeNull();
   });
 });

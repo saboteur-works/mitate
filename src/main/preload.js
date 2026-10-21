@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('mediaOrganizer', {
   renameCollection: (collectionId, name) => ipcRenderer.invoke('collections:rename', collectionId, name),
   deleteCollection: (collectionId) => ipcRenderer.invoke('collections:delete', collectionId),
   addFolder: (collectionId, dirPath) => ipcRenderer.invoke('collections:addFolder', collectionId, dirPath),
+  addFolders: (collectionId, paths) => ipcRenderer.invoke('collections:addFolders', collectionId, paths),
   removeFolder: (collectionId, folderId) => ipcRenderer.invoke('collections:removeFolder', collectionId, folderId),
   revealFile: (filePath) => ipcRenderer.invoke('files:reveal', filePath),
 });

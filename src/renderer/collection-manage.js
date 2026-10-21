@@ -8,8 +8,9 @@
  * - FR-3: folder list and Remove folder, no confirmation. Removing a folder of
  *   the shown collection refreshes the tree in place with TreeView.update (the
  *   selection survives only if its node still exists).
- * - FR-7: Add folder through the folder picker, one collections:addFolder call
- *   per picked folder, in pick order, the collection marked busy meanwhile.
+ * - FR-7: Add folder through the folder picker, one collections:addFolders call
+ *   for all picked folders, the collection marked busy meanwhile. The main process
+ *   drops picks inside another pick and adds the rest in pick order.
  * - FR-8: a refused add (FOLDER_COVERED) is shown in manage-error; an add that
  *   replaced contained folders is reported in manage-notice.
  * - FR-12: all four controls are disabled while the managed collection is busy,
@@ -17,7 +18,8 @@
  * It manages the collection that 'collection-selected' last announced and hides
  * itself when the announcement carries collectionId null. After a successful
  * action it dispatches 'collections-changed' on document (detail.collectionId)
- * so the collection list can refresh.
+ * so the collection list can refresh. A result that arrives after the user switched
+ * to another collection shows no error, notice or panel change.
  */
 (function () {
   const api = window.mediaOrganizer;
@@ -41,6 +43,11 @@
   function showError(message) {
     errorBox.textContent = message;
     errorBox.hidden = !message;
+  }
+
+  // Shows an error only while the panel still manages the collection the action was for.
+  function showErrorFor(collectionId, message) {
+    if (managedId === collectionId) showError(message);
   }
 
   // FR-8: tells which folders a confirmed add replaced. Cleared by the next action in the panel.
@@ -121,11 +128,11 @@
     sync();
     try {
       const result = await api.removeFolder(collectionId, folderId);
-      if (!result.ok) return showError(result.error);
+      if (!result.ok) return showErrorFor(collectionId, result.error);
       showView(collectionId, result.view);
       document.dispatchEvent(new CustomEvent('collections-changed', { detail: { collectionId } }));
     } catch (err) {
-      showError(messageOf(err));
+      showErrorFor(collectionId, messageOf(err));
     } finally {
       removing = false;
       sync();
@@ -139,11 +146,11 @@
     window.TreeView.update(view.folders, view.files);
   }
 
-  // Picks folders, then adds them one by one in pick order; the first failure
-  // (a FOLDER_COVERED refusal included) stops the rest and is shown, and the folders added
-  // before it stay. A cancelled replace confirmation adds nothing for that folder and is not
-  // an error. A confirmed replace lists the removed folders in the notice (result.replaced,
-  // missing when the main process sent none).
+  // Picks folders, then adds them with one collections:addFolders call. The main process
+  // drops picks inside another pick, adds the rest in pick order and stops at the first
+  // failure (a FOLDER_COVERED refusal included): the folders added before it stay, the
+  // view so far comes back with the error. A cancelled replace confirmation adds nothing
+  // for that folder and is not an error. result.notice names replaced and dropped folders.
   async function addFolders() {
     if (managedId === null || adding || isBusy()) return;
     const collectionId = managedId;
@@ -155,30 +162,24 @@
     try {
       const picked = await api.pickFolders();
       if (picked.canceled || picked.paths.length === 0) return;
-      began = window.CollectionBusy.begin(collectionId);
-      let changed = false;
-      const notices = [];
+      began = window.CollectionBusy.begin(collectionId, 'add-folder');
+      let result;
       try {
-        for (const dirPath of picked.paths) {
-          const result = await api.addFolder(collectionId, dirPath);
-          if (!result.ok) {
-            showError(result.error);
-            break;
-          }
-          if (result.canceled) continue;
-          changed = true;
-          showView(collectionId, result.view);
-          const replaced = Array.isArray(result.replaced) ? result.replaced : [];
-          if (replaced.length > 0) {
-            notices.push(`${dirPath} replaced ${replaced.join(', ')}.`);
-          }
-        }
+        result = await api.addFolders(collectionId, picked.paths);
       } finally {
-        showNotice(notices.join(' '));
-        if (changed) document.dispatchEvent(new CustomEvent('collections-changed', { detail: { collectionId } }));
+        if (began) window.CollectionBusy.end(collectionId);
+        began = false;
+      }
+      if (result.view) {
+        showView(collectionId, result.view);
+        document.dispatchEvent(new CustomEvent('collections-changed', { detail: { collectionId } }));
+      }
+      if (managedId === collectionId) {
+        showNotice(result.notice || '');
+        if (!result.ok) showError(result.error);
       }
     } catch (err) {
-      showError(messageOf(err));
+      showErrorFor(collectionId, messageOf(err));
     } finally {
       if (began) window.CollectionBusy.end(collectionId);
       adding = false;
@@ -195,11 +196,11 @@
     sync();
     try {
       const result = await api.renameCollection(collectionId, renameInput.value);
-      if (!result.ok) return showError(result.error);
+      if (!result.ok) return showErrorFor(collectionId, result.error);
       if (managedId === collectionId) renameInput.value = result.summary.name;
       document.dispatchEvent(new CustomEvent('collections-changed', { detail: { collectionId } }));
     } catch (err) {
-      showError(messageOf(err));
+      showErrorFor(collectionId, messageOf(err));
     } finally {
       renaming = false;
       sync();
@@ -218,12 +219,12 @@
     sync();
     try {
       const result = await api.deleteCollection(collectionId);
-      if (!result.ok) return showError(result.error);
+      if (!result.ok) return showErrorFor(collectionId, result.error);
       if (result.canceled) return;
       document.dispatchEvent(new CustomEvent('collection-deleted', { detail: { collectionId } }));
       document.dispatchEvent(new CustomEvent('collections-changed', { detail: { collectionId } }));
     } catch (err) {
-      showError(messageOf(err));
+      showErrorFor(collectionId, messageOf(err));
     } finally {
       deleting = false;
       sync();

@@ -74,7 +74,7 @@ const pathCompare =
  * root has "owners": every root whose path strictly contains it, and every
  * root with the identical path that comes EARLIER in the folderRecords order
  * (the input order is the tie-break). Paths compared are `resolvedPath ||
- * path` using PathCompare (whole segments, case-insensitive). A root drops a
+ * path` using PathCompare (whole segments, case-sensitive). A root drops a
  * file only when an owner has a file record whose absolute path (owner path +
  * relativePath) is the same. If no owner has a record (stale owner index) the
  * inner root keeps the file. Roots themselves are never dropped, so an inner
@@ -172,11 +172,10 @@ function effectivePath(f) {
   return f.resolvedPath || f.path;
 }
 
-// Case-folded absolute key of a file under a root, or null for an unusable path.
+// Normalised absolute key of a file under a root, or null for an unusable path.
 function fileKey(rootPath, rec) {
   const rel = String(rec.relativePath || rec.name || '');
-  const abs = pathCompare.normalize(String(rootPath) + '/' + rel);
-  return abs === null ? null : abs.toLowerCase();
+  return pathCompare.normalize(String(rootPath) + '/' + rel);
 }
 
 // Indexes (into the entries array) of the roots that own entries[i].
@@ -184,9 +183,9 @@ function ownersOf(entries, i) {
   const owners = [];
   for (let j = 0; j < entries.length; j++) {
     if (j === i) continue;
-    const a = entries[j].effPath;
-    const b = entries[i].effPath;
-    if (pathCompare.contains(a, b) || (j < i && pathCompare.isSame(a, b))) owners.push(j);
+    // How the candidate owner j relates to root i: j contains i, or is the same path and earlier.
+    const rel = pathCompare.compare(entries[j].effPath, entries[i].effPath);
+    if (rel.contains || (j < i && rel.same)) owners.push(j);
   }
   return owners;
 }

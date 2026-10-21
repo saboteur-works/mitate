@@ -159,6 +159,7 @@ describe('collection management channels', () => {
       renameCollection: vi.fn(async () => view),
       deleteCollection: vi.fn(async () => ({ deleted: true })),
       addFolder: vi.fn(async () => view),
+      addFolders: vi.fn(async () => ({ view, replaced: [], dropped: [], notice: null })),
       removeFolder: vi.fn(async () => view),
       createCollection: vi.fn(async () => ({ canceled: true })),
       ...over,
@@ -170,6 +171,7 @@ describe('collection management channels', () => {
     expect(CHANNELS.renameCollection).toBe('collections:rename');
     expect(CHANNELS.deleteCollection).toBe('collections:delete');
     expect(CHANNELS.addFolder).toBe('collections:addFolder');
+    expect(CHANNELS.addFolders).toBe('collections:addFolders');
     expect(CHANNELS.removeFolder).toBe('collections:removeFolder');
   });
 
@@ -198,6 +200,31 @@ describe('collection management channels', () => {
     expect(await invoke(CHANNELS.addFolder, 'c1', '/m/a')).toEqual({ ok: true, view, replaced: ['/m/a/b'] });
     const plain = mk();
     expect((await plain.invoke(CHANNELS.addFolder, 'c1', '/d')).replaced).toEqual([]);
+  });
+
+  it('addFolders returns view, replaced, dropped and notice from the service', async () => {
+    const dropped = [{ path: '/m/a/b', coveredBy: '/m/a' }];
+    const out = { view, replaced: ['/m/x'], dropped, notice: 'N' };
+    const { invoke } = mk({ addFolders: async () => out });
+    expect(await invoke(CHANNELS.addFolders, 'c1', ['/m/a', '/m/a/b'])).toEqual({ ok: true, ...out });
+    const plain = mk();
+    await plain.invoke(CHANNELS.addFolders, 'c1', ['/d']);
+    expect(plain.service.addFolders).toHaveBeenCalledWith('c1', ['/d']);
+  });
+
+  it('addFolders returns the refusal with its code and the result so far', async () => {
+    const partial = { view, replaced: [], dropped: [], notice: null };
+    const refuse = async () => { throw Object.assign(new Error('already covered by /m/a'), { code: 'FOLDER_COVERED', partial }); };
+    const { invoke } = mk({ addFolders: refuse });
+    expect(await invoke(CHANNELS.addFolders, 'c1', ['/m/a/b']))
+      .toEqual({ ok: false, error: 'already covered by /m/a', code: 'FOLDER_COVERED', ...partial });
+  });
+
+  it('addFolders rejects a non-array or non-string picks before calling the service', async () => {
+    const { service, invoke } = mk();
+    for (const paths of ['/d', [7], null]) expect((await invoke(CHANNELS.addFolders, 'c1', paths)).ok).toBe(false);
+    expect((await invoke(CHANNELS.addFolders, 5, ['/d'])).ok).toBe(false);
+    expect(service.addFolders).not.toHaveBeenCalled();
   });
 
   it('returns a FOLDER_COVERED refusal as an error with its code', async () => {
@@ -254,6 +281,7 @@ describe('collection management channels', () => {
     expect(text).toMatch(/renameCollection:[^\n]*ipcRenderer\.invoke\('collections:rename',/);
     expect(text).toMatch(/deleteCollection:[^\n]*ipcRenderer\.invoke\('collections:delete',/);
     expect(text).toMatch(/addFolder:[^\n]*ipcRenderer\.invoke\('collections:addFolder',/);
+    expect(text).toMatch(/addFolders:[^\n]*ipcRenderer\.invoke\('collections:addFolders',/);
     expect(text).toMatch(/removeFolder:[^\n]*ipcRenderer\.invoke\('collections:removeFolder',/);
   });
 });

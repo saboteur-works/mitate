@@ -30,9 +30,11 @@ describe('path-compare', () => {
     expect(normalize('/a/b/')).toBe('/a/b');
   });
 
-  it('is case-insensitive', () => {
-    expect(isSame('/A/B', '/a/b')).toBe(true);
-    expect(isInside('/A/B/c', '/a/b')).toBe(true);
+  it('is case-sensitive: callers canonicalise the case first', () => {
+    expect(isSame('/A/B', '/a/b')).toBe(false);
+    expect(isInside('/A/B/c', '/a/b')).toBe(false);
+    expect(compare('/A/B', '/a/b/c')).toEqual({ same: false, inside: false, contains: false });
+    expect(isSame('/A/B/', '/A//B/./')).toBe(true);
   });
 
   it('collapses repeated separators and . segments', () => {

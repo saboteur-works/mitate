@@ -41,6 +41,13 @@
  *                                          existing ones needs confirm === true, then one
  *                                          storage.transaction adds it and removes them;
  *                                          replaced lists the removed folder paths)
+ *   addFolders(collectionId, paths)     -> Promise<{view, replaced, dropped, notice}>
+ *                                          (one multi-pick add under one 'add-folder' guard:
+ *                                          dropNested first, then addFolder's logic per kept pick,
+ *                                          in order. The first failure stops the rest and is thrown
+ *                                          with `partial` = the result so far. view is null when
+ *                                          nothing was added; replaced lists removed folder paths;
+ *                                          notice is the replaced and dropped texts, or null)
  *   removeFolder(collectionId, folderId) -> Promise<{collection, folders, files}>
  *                                          (the refreshed view; rejects with code
  *                                          'LAST_FOLDER' for the only folder)
@@ -100,7 +107,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createInFlightGuard } = require('./in-flight.js');
 const {
-  findOverlaps, describeRefusal, describeReplace, dropNested, resolvePath, NO_FILES_TOUCHED,
+  findOverlaps, describeRefusal, describeReplace, describeReplaced, describeDropped, dropNested, resolvePath, NO_FILES_TOUCHED,
 } = require('./overlap.js');
 const { defaultScan, checkReadableDirectory, isReadableDirectory, scanFolder } = require('./folder-access.js');
 
@@ -245,7 +252,10 @@ function createCollectionService({
     const changes = checked.filter(({ folder, ok }) => folder.unavailable === ok);
     if (changes.length === 0) return;
     storage.transaction(() => {
-      for (const { folder, ok } of changes) storage.setFolderUnavailable(folder.id, !ok);
+      // A folder removed while the checks were pending is skipped, not an error.
+      for (const { folder, ok } of changes) {
+        if (storage.getFolder(folder.id)) storage.setFolderUnavailable(folder.id, !ok);
+      }
     });
   }
 
@@ -346,42 +356,81 @@ function createCollectionService({
   // containing existing ones needs confirm === true, then replaces them in one
   // transaction; otherwise nothing is scanned or stored.
   async function addFolder(collectionId, dirPath) {
+    return withGuard(collectionId, 'add-folder', () => addFolderLocked(collectionId, dirPath));
+  }
+
+  // addFolder's body; the caller holds the guard.
+  async function addFolderLocked(collectionId, dirPath) {
+    requireCollection(collectionId);
+    const [dir] = await validateDirectories([dirPath]);
+    const folders = storage.listFolders(collectionId);
+    const overlaps = findOverlaps(dir, folders.map((f) => f.path));
+    const refusal = describeRefusal(overlaps, dir);
+    if (refusal) {
+      const err = new Error(refusal);
+      err.code = 'FOLDER_COVERED';
+      throw err;
+    }
+    const replace = describeReplace(overlaps, dir);
+    const replaced = replace ? folders.filter((f) => overlaps.contains.includes(f.path)) : [];
+    if (replace) {
+      const confirmed = typeof confirm === 'function' && (await confirm({
+        title: 'Add folder',
+        message: replace.message,
+        detail: replace.detail,
+        confirmLabel: 'Replace folders',
+      }));
+      if (confirmed !== true) return { canceled: true };
+    }
+    const scanned = await scanFolder(scan, dir);
+    const folderId = idGenerator();
+    storage.transaction(() => {
+      storage.putFolder({ id: folderId, collectionId, path: dir, unavailable: scanned.unavailable });
+      storage.replaceFolderIndex(folderId, scanned.records);
+      // putFolder appends to folderIds and removeFolder drops the id, its index and access data.
+      for (const f of replaced) storage.removeFolder(f.id);
+    });
+    const view = collectionView(storage, collectionId);
+    return replace ? { ...view, replaced: replaced.map((f) => f.path) } : view;
+  }
+
+  // FR-8: adds several picked folders under one guard acquisition. Picks inside or
+  // identical to another pick are dropped first (dropNested), then each kept pick goes
+  // through the addFolder logic in pick order. The first refusal or failure stops the
+  // rest; the error then carries `partial` (the same result shape, for what was done
+  // before it). A cancelled replace confirmation skips that pick. Resolves with
+  // { view, replaced, dropped, notice }: view is the last view (null when nothing was
+  // added), replaced the removed folder paths, notice the replaced and dropped texts.
+  async function addFolders(collectionId, paths) {
     return withGuard(collectionId, 'add-folder', async () => {
       requireCollection(collectionId);
-      const [dir] = await validateDirectories([dirPath]);
-      const folders = storage.listFolders(collectionId);
-      const overlaps = findOverlaps(dir, folders.map((f) => f.path));
-      const refusal = describeRefusal(overlaps, dir);
-      if (refusal) {
-        const err = new Error(refusal);
-        err.code = 'FOLDER_COVERED';
-        throw err;
-      }
-      const replace = describeReplace(overlaps, dir);
-      const replaced = replace ? folders.filter((f) => overlaps.contains.includes(f.path)) : [];
-      if (replace) {
-        const confirmed = typeof confirm === 'function' && (await confirm({
-          title: 'Add folder',
-          message: replace.message,
-          detail: replace.detail,
-          confirmLabel: 'Replace folders',
-        }));
-        if (confirmed !== true) return { canceled: true };
-      }
-      const scanned = await scanFolder(scan, dir);
-      const folderId = idGenerator();
-      storage.transaction(() => {
-        storage.putFolder({ id: folderId, collectionId, path: dir, unavailable: scanned.unavailable });
-        storage.replaceFolderIndex(folderId, scanned.records);
-        // putFolder appends to folderIds and removeFolder drops the id, its index and access data.
-        for (const f of replaced) storage.removeFolder(f.id);
+      const { kept, dropped } = dropNested(Array.isArray(paths) ? paths : []);
+      let view = null;
+      const replacements = [];
+      const outcome = () => ({
+        view,
+        replaced: replacements.flatMap((r) => r.replaced),
+        dropped,
+        notice: [describeReplaced(replacements), describeDropped(dropped)].filter(Boolean).join(' ') || null,
       });
-      const view = collectionView(storage, collectionId);
-      return replace ? { ...view, replaced: replaced.map((f) => f.path) } : view;
+      for (const dirPath of kept) {
+        let result;
+        try {
+          result = await addFolderLocked(collectionId, dirPath);
+        } catch (err) {
+          err.partial = outcome();
+          throw err;
+        }
+        if (result.canceled) continue;
+        const { replaced = [], ...rest } = result;
+        view = rest;
+        if (replaced.length > 0) replacements.push({ path: dirPath, replaced });
+      }
+      return outcome();
     });
   }
 
-  return { createCollection, addFolder, renameCollection, removeFolder, deleteCollection, loadCollections, listCollectionSummaries, getCollectionView, findIndexedFile };
+  return { createCollection, addFolder, addFolders, renameCollection, removeFolder, deleteCollection, loadCollections, listCollectionSummaries, getCollectionView, findIndexedFile };
 }
 
 module.exports = { createCollectionService, collectionView };

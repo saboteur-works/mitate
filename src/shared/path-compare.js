@@ -4,8 +4,9 @@
 // fs or realpath), so it loads in both the main process and the renderer.
 //
 // POSIX separators only ("/", macOS first). Backslashes are ordinary
-// characters. Comparison is by whole segments and case-insensitive. Symlinks
-// are not resolved here; this is a string comparison only.
+// characters. Comparison is by whole segments and case-sensitive. Symlinks
+// and the on-disk case are not resolved here; callers canonicalise first
+// (overlap.js uses fs.realpathSync.native). This is a string comparison only.
 //
 // normalize collapses repeated separators, drops "." segments, resolves ".."
 // segments (never above the root) and removes a trailing separator. It keeps
@@ -36,7 +37,7 @@
 
   function keyOf(p) {
     const segs = segmentsOf(p);
-    return segs === null ? null : segs.map((s) => s.toLowerCase());
+    return segs;
   }
 
   function isPrefix(shorter, longer) {
@@ -46,7 +47,7 @@
     return true;
   }
 
-  // Same path (after normalisation and case folding).
+  // Same path (after normalisation).
   function isSame(a, b) {
     const ka = keyOf(a);
     const kb = keyOf(b);

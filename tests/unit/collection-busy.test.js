@@ -40,4 +40,17 @@ describe('CollectionBusy', () => {
     expect(busy.begin('a')).toBe(false);
     expect(events).toHaveLength(1);
   });
+
+  it('holder returns the kind passed to begin, null when idle or no kind was given', () => {
+    const { busy } = load();
+    expect(busy.holder('a')).toBeNull();
+    busy.begin('a', 'add-folder');
+    busy.begin('b');
+    expect(busy.holder('a')).toBe('add-folder');
+    expect(busy.holder('b')).toBeNull();
+    busy.end('a');
+    expect(busy.holder('a')).toBeNull();
+    expect(busy.begin('a', 'rescan')).toBe(true);
+    expect(busy.holder('a')).toBe('rescan');
+  });
 });

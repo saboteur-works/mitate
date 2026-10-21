@@ -31,15 +31,20 @@
 
   document.addEventListener('collection-selected', (event) => {
     selectedId = event.detail.collectionId;
-    status.textContent = busy.isBusy(selectedId) ? 'Rescanning...' : '';
+    status.textContent = busy.holder(selectedId) === 'rescan' ? 'Rescanning...' : '';
     syncButton();
   });
 
-  document.addEventListener('collection-busy-changed', syncButton);
+  // The text follows the holder: once the selected collection is no longer held by a rescan,
+  // a leftover "Rescanning..." goes (the rescan's own result text is set after it ends).
+  document.addEventListener('collection-busy-changed', () => {
+    if (status.textContent === 'Rescanning...' && busy.holder(selectedId) !== 'rescan') status.textContent = '';
+    syncButton();
+  });
 
   button.addEventListener('click', async () => {
     const id = selectedId;
-    if (id === null || !busy.begin(id)) return;
+    if (id === null || !busy.begin(id, 'rescan')) return;
     syncButton();
     status.textContent = 'Rescanning...';
     try {

@@ -2,12 +2,14 @@
 
 // Classifies a folder being added against a collection's existing folders, and
 // words the refusal, replace and dropped-picks texts. Pure apart from the
-// injected `realpath` (default fs.realpathSync); it shows no dialog, it only
-// returns text and lists.
+// injected `realpath` (default fs.realpathSync.native); it shows no dialog, it
+// only returns text and lists.
 //
 // Both sides are resolved first: realpath, or path.resolve when realpath throws
-// (for example the folder does not exist). Comparison is then by whole segments,
-// case-insensitive, via src/shared/path-compare.js.
+// (for example the folder does not exist). The native realpath returns the
+// on-disk case, so a case-insensitive volume canonicalises a variant to the
+// stored case and a case-sensitive one keeps two real folders apart. Comparison
+// is then by whole segments, case-sensitive, via src/shared/path-compare.js.
 //
 // findOverlaps returns { covered, coveredCount, identical, contains }:
 //   covered      the first existing folder (in the given order) that the
@@ -27,6 +29,8 @@
 //       drops every pick that is inside another pick, or identical to an earlier
 //       one; coveredBy is the kept outermost pick; order follows the picks
 //   describeDropped(dropped)                notice text, or null for an empty list
+//   describeReplaced(replacements)          notice text for [{ path, replaced: [paths] }]
+//       (what a confirmed add removed), or null when nothing was replaced
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -41,11 +45,11 @@ function resolveWith(realpath, p) {
 }
 
 // realpath of p, or path.resolve(p) when it cannot be resolved.
-function resolvePath(p, realpath = fs.realpathSync) {
+function resolvePath(p, realpath = fs.realpathSync.native) {
   return resolveWith(realpath, p);
 }
 
-function findOverlaps(candidatePath, existingPaths, { realpath = fs.realpathSync } = {}) {
+function findOverlaps(candidatePath, existingPaths, { realpath = fs.realpathSync.native } = {}) {
   const candidate = resolveWith(realpath, candidatePath);
   const coveredBy = [];
   let identical = false;
@@ -93,7 +97,7 @@ function describeReplace(result, candidatePath) {
   };
 }
 
-function dropNested(picks, { realpath = fs.realpathSync } = {}) {
+function dropNested(picks, { realpath = fs.realpathSync.native } = {}) {
   const list = picks || [];
   const resolved = list.map((p) => resolveWith(realpath, p));
   const isDropped = list.map((_, i) => resolved.some((other, j) => {
@@ -121,6 +125,12 @@ function describeDropped(dropped) {
   return `Left out because another picked folder already covers ${dropped.length === 1 ? 'it' : 'them'}: ${lines.join('; ')}.`;
 }
 
+function describeReplaced(replacements) {
+  const list = (replacements || []).filter((r) => r.replaced && r.replaced.length > 0);
+  if (list.length === 0) return null;
+  return list.map((r) => `${r.path} replaced ${r.replaced.join(', ')}.`).join(' ');
+}
+
 module.exports = {
-  findOverlaps, describeRefusal, describeReplace, dropNested, describeDropped, resolvePath, NO_FILES_TOUCHED,
+  findOverlaps, describeRefusal, describeReplace, dropNested, describeDropped, describeReplaced, resolvePath, NO_FILES_TOUCHED,
 };

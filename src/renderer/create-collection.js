@@ -79,8 +79,13 @@
     document.dispatchEvent(new CustomEvent('collection-selected', { detail: { collectionId } }));
   }
 
+  // Orders refreshCollections calls: only the latest one renders.
+  let refreshToken = 0;
+
   async function refreshCollections() {
+    const token = ++refreshToken;
     const result = await api.listCollections();
+    if (token !== refreshToken) return;
     if (!result.ok) return showError(result.error);
     renderCollections(result.summaries);
   }

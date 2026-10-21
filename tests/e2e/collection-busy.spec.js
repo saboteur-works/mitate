@@ -121,7 +121,7 @@ test('rescan held: all management controls and Rescan are disabled; another coll
 test('add folder held: the same controls are disabled, then re-enabled on release', async () => {
   await withApp('add-ui', async ({ app, window, ui, extra }) => {
     await stubFolderPicker(app, [extra]);
-    const gate = await gateChannel(app, CHANNELS.addFolder);
+    const gate = await gateChannel(app, CHANNELS.addFolders);
     await selectItem(window, ui.alphaItem, 2);
 
     await window.getByTestId('add-folder-button').click();
@@ -181,6 +181,13 @@ test('add folder held in the service: a rescan of that collection is refused wit
     await window.getByTestId('add-folder-button').click();
     await expect.poll(() => hold.started(), { timeout: 30000 }).toBe(true);
     await expectControls(window, 'disabled');
+
+    // Re-selecting the collection while its add-folder scan is held: Rescan stays disabled and
+    // does not claim a rescan is running.
+    await selectItem(window, ui.alphaItem, 2);
+    await expect(window.getByTestId('rescan')).toBeDisabled();
+    await expect(window.getByTestId('rescan-status')).not.toHaveText('Rescanning...');
+    await expect(window.getByTestId('rescan-status')).toHaveText('');
 
     const refused = await call(window, 'rescanCollection', alphaId);
     expect(refused.ok).toBe(false);

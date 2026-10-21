@@ -277,3 +277,36 @@ test('when one pick of three is refused the rest are not added and the earlier p
     fs.rmSync(userDataDir, { recursive: true, force: true });
   }
 });
+
+test('a folder and its subfolder picked together add one folder; the subfolder is named in the notice', async () => {
+  const userDataDir = newUserDataDir('folder-add-nested-picks-e2e');
+  const first = buildFixtureTree();
+  const second = buildFixtureTree();
+  const nested = `${second.root}/Photos`;
+  let session;
+  try {
+    const collectionId = await createCollection(userDataDir, 'Nested', [first.root]);
+
+    session = await launchApp(userDataDir);
+    const { app, window } = session;
+    await selectOnlyCollection(window);
+
+    await stubFolderPicker(app, [second.root, nested]);
+    await stubConfirm(app, [true]);
+    await window.getByTestId('add-folder-button').click();
+
+    await expect(window.getByTestId('manage-folder')).toHaveCount(2, { timeout: 30000 });
+    await expect(window.getByTestId('manage-folder-path')).toHaveText([first.root, second.root]);
+    await expect(window.getByTestId('manage-notice')).toBeVisible();
+    await expect(window.getByTestId('manage-notice')).toContainText(nested);
+    await expect(window.getByTestId('manage-error')).toBeHidden();
+    expect(await confirmCalls(app)).toEqual([]);
+
+    await app.close();
+    expect(storedPaths(userDataDir, collectionId)).toEqual([first.root, second.root]);
+  } finally {
+    if (session) await session.app.close().catch(() => {});
+    for (const f of [first, second]) cleanupFixtureTree(f.root);
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  }
+});
