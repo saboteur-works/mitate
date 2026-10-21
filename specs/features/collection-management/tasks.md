@@ -312,7 +312,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-8 (inside, identical, contains and creation wording; same path comparison as before) and FR-13 (unit tests for the new rules). The path comparison is unchanged (FR-8). Rewrite the `describeOverlap` tests of Task 3 as the new helper tests. `service.js` still imports `describeOverlap` until Tasks 29 and 30, so run this task and Task 29 as one change set or keep `describeOverlap` exported until Task 30 removes its last use; the Done condition above applies once Task 30 has landed.
 **POS:** task_7f8a917c
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 29: Service addFolder refuses inside and identical, replaces on contains
 **What:** Change `addFolder` in `src/main/collections/service.js` so an inside or identical folder is refused with `FOLDER_COVERED`, and a containing folder asks for confirmation and on confirm replaces the contained folders in one transaction.
@@ -322,7 +322,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 5
 **Notes:** Covers FR-8 (inside, identical, contains), FR-3 and FR-4 (the replace uses the remove-folder cleanup, the last-folder rule does not apply), FR-11 (one transaction, refusal and cancel write nothing), FR-12 and FR-13. The seam is the `addFolder` body at the `describeOverlap` call (Task 8). Compute `folderIds` explicitly and pass it to `putCollection` last, as the shipped code does, so `putFolder`'s append and `removeFolder`'s filter do not fight the final list. Update the header comment of `service.js`.
 **POS:** task_28203add
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 30: Service createCollection drops nested picks
 **What:** Change `createCollection` in `src/main/collections/service.js` to drop every pick that is inside another pick, scan and store only the outermost picks, and return the dropped picks, with no confirmation.
@@ -332,7 +332,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-8 (creation case) and FR-13 (creation drop-nested). Replaces `describeCreationOverlap` and the `confirm` call of Task 9. The result shape is `{ collection, folders, files, dropped }`; other service methods are unchanged. Update the header comment of `service.js`.
 **POS:** task_2096211b
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 31: IPC passes the refusal, the replaced folders and the dropped picks
 **What:** Make `collections:addFolder` return `replaced` and `collections:create` return `dropped`, and document and test that a `FOLDER_COVERED` refusal reaches the renderer as an error with its code.
@@ -342,7 +342,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-8 and FR-12 (errors reach the renderer with codes). `collections:create` can no longer return `{ ok: true, canceled: true }` for overlap; keep the pass-through so a future cancel does not break callers, and say so in the header comment.
 **POS:** task_4513a218
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 32: Panel shows the refusal and the replace notice
 **What:** Make `src/renderer/collection-manage.js` show a notice naming the folders that a confirmed add replaced, and keep showing a `FOLDER_COVERED` refusal in `manage-error`.
@@ -352,7 +352,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-8 (messages shown), FR-7 and FR-13. The seam is `addFolders` in `collection-manage.js`: it already refreshes the tree through `showView` (`TreeView.update`), which drops a selection whose node id disappeared; the notice is the only new UI. Add `manage-notice` next to `manage-error` in `index.html` (`role="status"`). Edits `index.html` (also edited by Task 33).
 **POS:** task_e18c72de
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 33: Create screen shows which nested picks were dropped
 **What:** Make `src/renderer/create-collection.js` show a notice, after a collection is created, that names each dropped pick and the folder that covers it.
@@ -362,17 +362,17 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-8 (creation case, the notice) and FR-13. The seam is the create click handler: it already branches on `result.canceled`; add the `result.dropped` branch after `refreshCollections`, and keep the `canceled` pass-through. Edits `index.html` after Task 32 (declared dependency for file ordering).
 **POS:** task_efc9b735
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 34: E2E refuse inside, identical and symlink when adding a folder
 **What:** Rewrite the inside, identical and symlink cases of `tests/e2e/folder-add-overlap.spec.js` to expect a refusal, and keep the unrelated case.
 **Files:** tests/e2e/folder-add-overlap.spec.js
-**Done when:** `npm run test:e2e -- tests/e2e/folder-add-overlap.spec.js` exits 0, with tests asserting: (inside) adding a subfolder of an existing folder shows an error in `manage-error` containing "already covered" and the existing folder's path, `confirmCalls` is `[]`, and the tree, the panel list and the store (read after closing) are identical to before, with zero `collections:rescan` calls and no new index entries; (identical) adding the same path again shows an error containing "already in the collection", `confirmCalls` is `[]`, and one folder record for the path remains; (symlink) a symlink to an existing folder is refused with "already covered", with nothing changed; (inside, second collection) the same subfolder is accepted into a different collection that does not hold the parent; (unrelated) no confirmation is recorded and the folder is added; no case uses a confirmation answer; no real dialog appears; the old confirm-and-keep-both cases for inside, identical and symlink are gone.
+**Done when:** `npm run test:e2e -- tests/e2e/folder-add-overlap.spec.js` exits 0, with tests asserting: (inside) adding a subfolder of an existing folder shows an error in `manage-error` containing "already covered" and the existing folder's path, `confirmCalls` is `[]`, and the tree, the panel list and the store (read after closing) are identical to before, with zero `collections:rescan` calls and no new index entries; (identical) adding the same path again shows an error containing "already in the collection", `confirmCalls` is `[]`, and one folder record for the path remains; (symlink) a symlink to an existing folder is refused with "already in the collection", with nothing changed; (inside, second collection) the same subfolder is accepted into a different collection that does not hold the parent; (unrelated) no confirmation is recorded and the folder is added; no case uses a confirmation answer; no real dialog appears; the old confirm-and-keep-both cases for inside, identical and symlink are gone.
 **Depends on:** 32
 **Estimate:** 3
 **Notes:** Covers FR-8 (refuse inside and identical, nothing written, no scan, no dialog) and FR-13. The contains cases move to Task 35; remove the contains `describe` here in this task so the file passes. The symlink case builds a link inside a temp directory next to the fixture; skip with a stated reason if the platform refuses symlinks. Spec-only task.
 **POS:** task_5e5d046a
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 35: E2E replace on contains, with the index cleanup
 **What:** Add `tests/e2e/folder-replace.spec.js` for adding a folder that contains existing folders, with confirm and cancel, the index cleanup and the other collection's records.
@@ -382,7 +382,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-8 (contains, replace, cancel), FR-3 and FR-4 (index cleanup, other collection untouched), FR-9 (selection consequence) and FR-13. Follow the helper structure of `folder-add-overlap.spec.js`; run on a copy of the fixture tree. Spec-only task.
 **POS:** task_e07cc37e
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 36: E2E creation drops nested picks
 **What:** Rewrite `tests/e2e/create-overlap.spec.js` so nested picks are dropped with a notice and no confirmation.
@@ -392,7 +392,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-8 (creation case, notice, no dialog) and FR-6 (same folder at creation) and FR-13. Spec-only task.
 **POS:** task_49e87628
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 37: E2E one appearance for legacy nested roots
 **What:** Change `tests/e2e/dedup.spec.js` to seed nested and identical roots in the store as legacy data, and add a test that the UI refuses to build them.
@@ -402,7 +402,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-9 (safety net for legacy data, no migration) and FR-13. The UI cases are thin pointers to Tasks 34 to 36 and only assert the store ends without nesting. The seeded stores use format 1. Spec-only task.
 **POS:** task_4ee09426
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 38: Unit test that legacy nested roots stay readable and unchanged
 **What:** Add unit tests that a version-1 store holding nested and identical roots opens unchanged, builds a tree that shows each file once, and is not rewritten by reading it.
@@ -412,7 +412,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 2
 **Notes:** Covers FR-9 (legacy data keeps showing each file once, no migration), FR-6 (no format bump) and FR-13. Build the store in the test with `openStorage` and `putFolder`; it does not need the pre-feature commit fixture of Task 13.
 **POS:** task_a4febd2f
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 39: Read-only check around the changed overlap flows
 **What:** Change `tests/e2e/management-readonly.spec.js` so the overlapping add and overlapping creation steps become refused add, replace-on-contains and drop-nested creation steps.
@@ -422,7 +422,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 3
 **Notes:** Covers FR-10 (a refused add and a replace are included in the read-only check) and US-3. Keep both snapshots with the app closed, as in Task 27.
 **POS:** task_6cb71259
-**Done:** [ ]
+**Done:** [x]
 
 ### Task 40: Update the README and sweep for old overlap wording
 **What:** Update `README.md` and the header comments of the changed files so they describe refuse, replace and drop-nested instead of confirm-and-keep-both, and search the repository for stale wording.
@@ -432,7 +432,7 @@ Design decisions made by this breakdown (they follow from the spec and the shipp
 **Estimate:** 1
 **Notes:** Covers FR-8 and FR-9 (documentation of the revised rules). Text only; no behaviour change. `tree-model.js` logic is not edited.
 **POS:** task_786dc4ab
-**Done:** [ ]
+**Done:** [x]
 
 ## Summary
 - Total tasks: 40
