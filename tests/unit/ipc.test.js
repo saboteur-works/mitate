@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const { registerIpc, CHANNELS } = require('../../src/main/ipc.js');
-const { describeDropped } = require('../../src/main/collections/overlap.js');
+const { describeDropped, describeReplaced } = require('../../src/main/collections/overlap.js');
 
 function setup({ dialogResult = { canceled: false, filePaths: ['/a', '/b'] }, service, rescanService, revealFile } = {}) {
   const handlers = new Map();
@@ -158,8 +158,7 @@ describe('collection management channels', () => {
     const service = {
       renameCollection: vi.fn(async () => view),
       deleteCollection: vi.fn(async () => ({ deleted: true })),
-      addFolder: vi.fn(async () => view),
-      addFolders: vi.fn(async () => ({ view, replaced: [], dropped: [], notice: null })),
+      addFolders: vi.fn(async () => ({ view, replaced: [], replacements: [], dropped: [], error: null })),
       removeFolder: vi.fn(async () => view),
       createCollection: vi.fn(async () => ({ canceled: true })),
       ...over,
@@ -170,54 +169,54 @@ describe('collection management channels', () => {
   it('names and registers the four channels', () => {
     expect(CHANNELS.renameCollection).toBe('collections:rename');
     expect(CHANNELS.deleteCollection).toBe('collections:delete');
-    expect(CHANNELS.addFolder).toBe('collections:addFolder');
+    expect(CHANNELS.addFolder).toBeUndefined();
     expect(CHANNELS.addFolders).toBe('collections:addFolders');
     expect(CHANNELS.removeFolder).toBe('collections:removeFolder');
   });
 
-  it('rename returns the summary; add and remove return the view; delete returns deleted', async () => {
+  it('rename returns the summary; remove returns the view; delete returns deleted', async () => {
     const { service, invoke } = mk();
     expect(await invoke(CHANNELS.renameCollection, 'c1', 'New')).toEqual({ ok: true, summary: { id: 'c1', name: 'New', folderCount: 2 } });
-    expect(await invoke(CHANNELS.addFolder, 'c1', '/d')).toEqual({ ok: true, view, replaced: [] });
-    expect(await invoke(CHANNELS.removeFolder, 'c1', 'f1')).toEqual({ ok: true, view });
+        expect(await invoke(CHANNELS.removeFolder, 'c1', 'f1')).toEqual({ ok: true, view });
     expect(await invoke(CHANNELS.deleteCollection, 'c1')).toEqual({ ok: true, deleted: true });
     expect(service.renameCollection).toHaveBeenCalledOnce();
     expect(service.renameCollection).toHaveBeenCalledWith('c1', 'New');
-    expect(service.addFolder).toHaveBeenCalledWith('c1', '/d');
     expect(service.removeFolder).toHaveBeenCalledWith('c1', 'f1');
     expect(service.deleteCollection).toHaveBeenCalledWith('c1');
   });
 
-  it('passes a service cancel through for delete and add folder', async () => {
-    const canceled = async () => ({ canceled: true });
-    const { invoke } = mk({ deleteCollection: canceled, addFolder: canceled });
+  it('passes a service cancel through for delete', async () => {
+    const { invoke } = mk({ deleteCollection: async () => ({ canceled: true }) });
     expect(await invoke(CHANNELS.deleteCollection, 'c1')).toEqual({ ok: true, canceled: true });
-    expect(await invoke(CHANNELS.addFolder, 'c1', '/d')).toEqual({ ok: true, canceled: true });
   });
 
-  it('returns replaced beside the view for addFolder, [] when nothing was replaced', async () => {
-    const { invoke } = mk({ addFolder: async () => ({ ...view, replaced: ['/m/a/b'] }) });
-    expect(await invoke(CHANNELS.addFolder, 'c1', '/m/a')).toEqual({ ok: true, view, replaced: ['/m/a/b'] });
-    const plain = mk();
-    expect((await plain.invoke(CHANNELS.addFolder, 'c1', '/d')).replaced).toEqual([]);
-  });
-
-  it('addFolders returns view, replaced, dropped and notice from the service', async () => {
+  it('addFolders returns view, replaced, dropped and a notice built from replacements and dropped', async () => {
     const dropped = [{ path: '/m/a/b', coveredBy: '/m/a' }];
-    const out = { view, replaced: ['/m/x'], dropped, notice: 'N' };
+    const replacements = [{ path: '/m/x', replaced: ['/m/x/y'] }];
+    const out = { view, replaced: ['/m/x/y'], replacements, dropped, error: null };
     const { invoke } = mk({ addFolders: async () => out });
-    expect(await invoke(CHANNELS.addFolders, 'c1', ['/m/a', '/m/a/b'])).toEqual({ ok: true, ...out });
+    expect(await invoke(CHANNELS.addFolders, 'c1', ['/m/a', '/m/a/b'])).toEqual({
+      ok: true, view, replaced: ['/m/x/y'], dropped, notice: `${describeReplaced(replacements)} ${describeDropped(dropped)}`,
+    });
     const plain = mk();
-    await plain.invoke(CHANNELS.addFolders, 'c1', ['/d']);
+    expect(await plain.invoke(CHANNELS.addFolders, 'c1', ['/d'])).toEqual({ ok: true, view, replaced: [], dropped: [], notice: null });
     expect(plain.service.addFolders).toHaveBeenCalledWith('c1', ['/d']);
   });
 
-  it('addFolders returns the refusal with its code and the result so far', async () => {
-    const partial = { view, replaced: [], dropped: [], notice: null };
-    const refuse = async () => { throw Object.assign(new Error('already covered by /m/a'), { code: 'FOLDER_COVERED', partial }); };
-    const { invoke } = mk({ addFolders: refuse });
+  it('addFolders maps the service error to ok: false with its code and the result so far', async () => {
+    const error = { message: 'already covered by /m/a', code: 'FOLDER_COVERED' };
+    const { invoke } = mk({ addFolders: async () => ({ view, replaced: [], replacements: [], dropped: [], error }) });
     expect(await invoke(CHANNELS.addFolders, 'c1', ['/m/a/b']))
-      .toEqual({ ok: false, error: 'already covered by /m/a', code: 'FOLDER_COVERED', ...partial });
+      .toEqual({ ok: false, error: error.message, code: 'FOLDER_COVERED', view, replaced: [], dropped: [], notice: null });
+    const noCode = mk({ addFolders: async () => ({ view: null, replaced: [], replacements: [], dropped: [], error: { message: 'boom' } }) });
+    expect(await noCode.invoke(CHANNELS.addFolders, 'c1', ['/x']))
+      .toEqual({ ok: false, error: 'boom', view: null, replaced: [], dropped: [], notice: null });
+  });
+
+  it('addFolders returns a thrown service error (busy) as error and code', async () => {
+    const busy = async () => { throw Object.assign(new Error('busy'), { code: 'COLLECTION_BUSY' }); };
+    const { invoke } = mk({ addFolders: busy });
+    expect(await invoke(CHANNELS.addFolders, 'c1', ['/d'])).toEqual({ ok: false, error: 'busy', code: 'COLLECTION_BUSY' });
   });
 
   it('addFolders rejects a non-array or non-string picks before calling the service', async () => {
@@ -225,12 +224,6 @@ describe('collection management channels', () => {
     for (const paths of ['/d', [7], null]) expect((await invoke(CHANNELS.addFolders, 'c1', paths)).ok).toBe(false);
     expect((await invoke(CHANNELS.addFolders, 5, ['/d'])).ok).toBe(false);
     expect(service.addFolders).not.toHaveBeenCalled();
-  });
-
-  it('returns a FOLDER_COVERED refusal as an error with its code', async () => {
-    const refuse = async () => { throw Object.assign(new Error('already covered by /m/a'), { code: 'FOLDER_COVERED' }); };
-    const { invoke } = mk({ addFolder: refuse });
-    expect(await invoke(CHANNELS.addFolder, 'c1', '/m/a/b')).toEqual({ ok: false, error: 'already covered by /m/a', code: 'FOLDER_COVERED' });
   });
 
   it('returns summary, dropped and the dropped notice for create; notice is null when nothing was dropped', async () => {
@@ -266,21 +259,21 @@ describe('collection management channels', () => {
       await invoke(CHANNELS.renameCollection, 5, 'x'),
       await invoke(CHANNELS.renameCollection, 'c1', null),
       await invoke(CHANNELS.deleteCollection, undefined),
-      await invoke(CHANNELS.addFolder, 'c1', 7),
-      await invoke(CHANNELS.addFolder, {}, '/d'),
+      await invoke(CHANNELS.addFolders, 'c1', [7]),
+      await invoke(CHANNELS.addFolders, {}, ['/d']),
       await invoke(CHANNELS.removeFolder, 'c1', 3),
     ]) {
       expect(result.ok).toBe(false);
       expect(typeof result.error).toBe('string');
     }
-    for (const fn of ['renameCollection', 'deleteCollection', 'addFolder', 'removeFolder']) expect(service[fn]).not.toHaveBeenCalled();
+    for (const fn of ['renameCollection', 'deleteCollection', 'addFolders', 'removeFolder']) expect(service[fn]).not.toHaveBeenCalled();
   });
 
   it('exposes the four methods in the preload with literal channel names', () => {
     const text = fs.readFileSync(new URL('../../src/main/preload.js', import.meta.url), 'utf8');
     expect(text).toMatch(/renameCollection:[^\n]*ipcRenderer\.invoke\('collections:rename',/);
     expect(text).toMatch(/deleteCollection:[^\n]*ipcRenderer\.invoke\('collections:delete',/);
-    expect(text).toMatch(/addFolder:[^\n]*ipcRenderer\.invoke\('collections:addFolder',/);
+    expect(text).not.toContain("'collections:addFolder'");
     expect(text).toMatch(/addFolders:[^\n]*ipcRenderer\.invoke\('collections:addFolders',/);
     expect(text).toMatch(/removeFolder:[^\n]*ipcRenderer\.invoke\('collections:removeFolder',/);
   });

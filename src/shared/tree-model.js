@@ -172,8 +172,8 @@ function effectivePath(f) {
   return f.resolvedPath || f.path;
 }
 
-// Normalised absolute key of a file under a root, or null for an unusable path.
-function fileKey(rootPath, rec) {
+// Normalised absolute path (case kept) of a file under a root, or null for an unusable path.
+function normalizedFilePath(rootPath, rec) {
   const rel = String(rec.relativePath || rec.name || '');
   return pathCompare.normalize(String(rootPath) + '/' + rel);
 }
@@ -214,7 +214,7 @@ function buildTree(folderRecords, fileRecords) {
       if (owner.keys === null) {
         owner.keys = new Set();
         for (const rec of owner.files) {
-          const k = fileKey(owner.effPath, rec);
+          const k = normalizedFilePath(owner.effPath, rec);
           if (k !== null) owner.keys.add(k);
         }
       }
@@ -224,7 +224,7 @@ function buildTree(folderRecords, fileRecords) {
   for (const e of entries) {
     for (const rec of e.files) {
       if (e.owners.length > 0) {
-        const k = fileKey(e.effPath, rec);
+        const k = normalizedFilePath(e.effPath, rec);
         if (k !== null && e.owners.some((j) => entries[j].keys.has(k))) continue;
       }
       addFile(e.root, rec, e.byRel);

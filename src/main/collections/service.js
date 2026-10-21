@@ -41,13 +41,15 @@
  *                                          existing ones needs confirm === true, then one
  *                                          storage.transaction adds it and removes them;
  *                                          replaced lists the removed folder paths)
- *   addFolders(collectionId, paths)     -> Promise<{view, replaced, dropped, notice}>
+ *   addFolders(collectionId, paths)     -> Promise<{view, replaced, replacements, dropped, error}>
  *                                          (one multi-pick add under one 'add-folder' guard:
  *                                          dropNested first, then addFolder's logic per kept pick,
- *                                          in order. The first failure stops the rest and is thrown
- *                                          with `partial` = the result so far. view is null when
- *                                          nothing was added; replaced lists removed folder paths;
- *                                          notice is the replaced and dropped texts, or null)
+ *                                          in order. The first refusal or failure of a pick stops
+ *                                          the rest and is returned as error = {message, code}
+ *                                          (null when none) beside the result so far; unknown
+ *                                          collection and busy still throw. view is null when
+ *                                          nothing was added; replaced lists removed folder paths,
+ *                                          replacements the same per added pick as [{path, replaced}])
  *   removeFolder(collectionId, folderId) -> Promise<{collection, folders, files}>
  *                                          (the refreshed view; rejects with code
  *                                          'LAST_FOLDER' for the only folder)
@@ -107,7 +109,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createInFlightGuard } = require('./in-flight.js');
 const {
-  findOverlaps, describeRefusal, describeReplace, describeReplaced, describeDropped, dropNested, resolvePath, NO_FILES_TOUCHED,
+  findOverlaps, describeRefusal, describeReplace, dropNested, resolvePath, NO_FILES_TOUCHED,
 } = require('./overlap.js');
 const { defaultScan, checkReadableDirectory, isReadableDirectory, scanFolder } = require('./folder-access.js');
 
@@ -252,9 +254,11 @@ function createCollectionService({
     const changes = checked.filter(({ folder, ok }) => folder.unavailable === ok);
     if (changes.length === 0) return;
     storage.transaction(() => {
-      // A folder removed while the checks were pending is skipped, not an error.
+      // Re-read each folder: one removed while the checks were pending is skipped, and
+      // a flag someone else already changed is not overwritten with an older result.
       for (const { folder, ok } of changes) {
-        if (storage.getFolder(folder.id)) storage.setFolderUnavailable(folder.id, !ok);
+        const current = storage.getFolder(folder.id);
+        if (current && current.unavailable === ok) storage.setFolderUnavailable(folder.id, !ok);
       }
     });
   }
@@ -262,9 +266,9 @@ function createCollectionService({
   // Summaries for the collection list: no file records, and the index is not
   // read. Runs the accessibility check first.
   async function listCollectionSummaries() {
-    const collections = storage.listCollections();
-    await refreshAccessibility(collections);
-    return collections.map((collection) => {
+    await refreshAccessibility(storage.listCollections());
+    // Read after the await so a collection deleted meanwhile is not returned.
+    return storage.listCollections().map((collection) => {
       const folders = orderedFolders(collection, storage.listFolders(collection.id)).map(({ id, path: folderPath, unavailable }) => ({
         id,
         path: folderPath,
@@ -356,10 +360,16 @@ function createCollectionService({
   // containing existing ones needs confirm === true, then replaces them in one
   // transaction; otherwise nothing is scanned or stored.
   async function addFolder(collectionId, dirPath) {
-    return withGuard(collectionId, 'add-folder', () => addFolderLocked(collectionId, dirPath));
+    return withGuard(collectionId, 'add-folder', async () => {
+      const result = await addFolderLocked(collectionId, dirPath);
+      if (result.canceled) return { canceled: true };
+      return { ...collectionView(storage, collectionId), replaced: result.replaced };
+    });
   }
 
-  // addFolder's body; the caller holds the guard.
+  // addFolder's body; the caller holds the guard. Resolves { replaced: [removed folder
+  // paths] } after storing the folder, or { canceled: true } when the replace
+  // confirmation was declined. It builds no view.
   async function addFolderLocked(collectionId, dirPath) {
     requireCollection(collectionId);
     const [dir] = await validateDirectories([dirPath]);
@@ -390,43 +400,43 @@ function createCollectionService({
       // putFolder appends to folderIds and removeFolder drops the id, its index and access data.
       for (const f of replaced) storage.removeFolder(f.id);
     });
-    const view = collectionView(storage, collectionId);
-    return replace ? { ...view, replaced: replaced.map((f) => f.path) } : view;
+    return { replaced: replaced.map((f) => f.path) };
   }
 
   // FR-8: adds several picked folders under one guard acquisition. Picks inside or
   // identical to another pick are dropped first (dropNested), then each kept pick goes
-  // through the addFolder logic in pick order. The first refusal or failure stops the
-  // rest; the error then carries `partial` (the same result shape, for what was done
-  // before it). A cancelled replace confirmation skips that pick. Resolves with
-  // { view, replaced, dropped, notice }: view is the last view (null when nothing was
-  // added), replaced the removed folder paths, notice the replaced and dropped texts.
+  // through the addFolder logic in pick order. The first refusal or failure of a pick
+  // stops the rest and comes back as `error`, beside what was done before it; errors not
+  // about one pick (unknown collection, busy) throw. A cancelled replace confirmation
+  // skips that pick. Resolves with { view, replaced, replacements, dropped, error }: view
+  // is the last view (null when nothing was added), replaced the removed folder paths,
+  // replacements the same per added pick as [{ path, replaced }], error null or { message, code }.
   async function addFolders(collectionId, paths) {
     return withGuard(collectionId, 'add-folder', async () => {
       requireCollection(collectionId);
-      const { kept, dropped } = dropNested(Array.isArray(paths) ? paths : []);
-      let view = null;
+      const { kept, dropped } = dropNested(paths);
+      let added = false;
+      let error = null;
       const replacements = [];
-      const outcome = () => ({
-        view,
-        replaced: replacements.flatMap((r) => r.replaced),
-        dropped,
-        notice: [describeReplaced(replacements), describeDropped(dropped)].filter(Boolean).join(' ') || null,
-      });
       for (const dirPath of kept) {
         let result;
         try {
           result = await addFolderLocked(collectionId, dirPath);
         } catch (err) {
-          err.partial = outcome();
-          throw err;
+          error = { message: err.message, code: err.code };
+          break;
         }
         if (result.canceled) continue;
-        const { replaced = [], ...rest } = result;
-        view = rest;
-        if (replaced.length > 0) replacements.push({ path: dirPath, replaced });
+        added = true;
+        replacements.push({ path: dirPath, replaced: result.replaced });
       }
-      return outcome();
+      return {
+        view: added ? collectionView(storage, collectionId) : null,
+        replaced: replacements.flatMap((r) => r.replaced),
+        replacements,
+        dropped,
+        error,
+      };
     });
   }
 

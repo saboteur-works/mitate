@@ -35,11 +35,6 @@
     return segs === null ? null : '/' + segs.join('/');
   }
 
-  function keyOf(p) {
-    const segs = segmentsOf(p);
-    return segs;
-  }
-
   function isPrefix(shorter, longer) {
     for (let i = 0; i < shorter.length; i++) {
       if (shorter[i] !== longer[i]) return false;
@@ -47,31 +42,10 @@
     return true;
   }
 
-  // Same path (after normalisation).
-  function isSame(a, b) {
-    const ka = keyOf(a);
-    const kb = keyOf(b);
-    if (ka === null || kb === null) return false;
-    return ka.length === kb.length && isPrefix(ka, kb);
-  }
-
-  // True when `child` is strictly inside `parent`. Identical paths are not inside.
-  function isInside(child, parent) {
-    const kc = keyOf(child);
-    const kp = keyOf(parent);
-    if (kc === null || kp === null) return false;
-    return kc.length > kp.length && isPrefix(kp, kc);
-  }
-
-  // True when `parent` strictly contains `child`.
-  function contains(parent, child) {
-    return isInside(child, parent);
-  }
-
   // { same, inside, contains } describing how `a` relates to `b`.
   function compare(a, b) {
-    const ka = keyOf(a);
-    const kb = keyOf(b);
+    const ka = segmentsOf(a);
+    const kb = segmentsOf(b);
     if (ka === null || kb === null) return { same: false, inside: false, contains: false };
     return {
       same: ka.length === kb.length && isPrefix(ka, kb),
@@ -79,6 +53,15 @@
       contains: kb.length > ka.length && isPrefix(ka, kb),
     };
   }
+
+  // Same path (after normalisation).
+  const isSame = (a, b) => compare(a, b).same;
+
+  // True when `child` is strictly inside `parent`. Identical paths are not inside.
+  const isInside = (child, parent) => compare(child, parent).inside;
+
+  // True when `parent` strictly contains `child`.
+  const contains = (parent, child) => compare(parent, child).contains;
 
   const PathCompare = { normalize, isSame, isInside, contains, compare };
 

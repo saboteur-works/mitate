@@ -553,6 +553,35 @@ describe('availability check of a folder removed while it is pending', () => {
   });
 });
 
+describe('availability check against a flag changed meanwhile', () => {
+  it('does not overwrite a flag someone else already set with an older check result', async () => {
+    const dir = path.join(work, 'flip');
+    fs.mkdirSync(dir);
+    const storage = openStorage({ location: { file: storageFile } });
+    const svc = createCollectionService({ storage, scan: stubScan });
+    const created = await svc.createCollection('c', [dir]);
+    const folder = created.folders[0];
+    fs.rmdirSync(dir); // the check will report unavailable
+    const pending = svc.listCollectionSummaries();
+    storage.setFolderUnavailable(folder.id, true); // another writer got there first
+    const spy = vi.spyOn(storage, 'setFolderUnavailable');
+    const summaries = await pending;
+    expect(spy).not.toHaveBeenCalled();
+    expect(summaries[0].folders[0].unavailable).toBe(true);
+  });
+
+  it('does not return a collection deleted while the checks were pending', async () => {
+    const dir = path.join(work, 'del');
+    fs.mkdirSync(dir);
+    const storage = openStorage({ location: { file: storageFile } });
+    const svc = createCollectionService({ storage, scan: stubScan });
+    const created = await svc.createCollection('c', [dir]);
+    const pending = svc.listCollectionSummaries();
+    storage.removeCollection(created.collection.id);
+    expect(await pending).toEqual([]);
+  });
+});
+
 describe('rescan of a collection removed while it is scanning', () => {
   const { createRescanService } = require('../../src/main/collections/rescan.js');
 
@@ -1435,32 +1464,32 @@ describe('addFolders', () => {
       expect(scans).toEqual([a]);
       expect(confirms).toEqual([]);
       expect(result.dropped).toEqual([{ path: ab, coveredBy: a }]);
-      expect(result.notice).toContain(ab);
       expect(result.replaced).toEqual([]);
       expect(result.view.folders.map((f) => f.path)).toEqual([path.join(work, 'base'), a]);
     });
   }
 
-  it('adds the picks in order and returns notice null when nothing was dropped or replaced', async () => {
+  it('adds the picks in order and returns no error when nothing was dropped or replaced', async () => {
     const { svc, storage, id } = await setup();
     const x = mk('x');
     const y = mk('y');
     const result = await svc.addFolders(id, [y, x]);
     expect(storage.listFolders(id).map((f) => f.path)).toEqual([path.join(work, 'base'), y, x]);
-    expect(result).toMatchObject({ replaced: [], dropped: [], notice: null });
+    expect(result).toMatchObject({ replaced: [], dropped: [], error: null });
   });
 
-  it('a refusal stops the rest and carries the view so far; the first pick stays', async () => {
+  it('a refusal stops the rest and resolves with error and the view so far; the first pick stays', async () => {
     const { svc, storage, base, id } = await setup();
     const x = mk('x');
     const z = mk('z');
-    const err = await svc.addFolders(id, [x, mk('base', 'inner'), z]).catch((e) => e);
-    expect(err.code).toBe('FOLDER_COVERED');
-    expect(err.partial.view.folders.map((f) => f.path)).toEqual([base, x]);
+    const result = await svc.addFolders(id, [x, mk('base', 'inner'), z]);
+    expect(result.error.code).toBe('FOLDER_COVERED');
+    expect(result.error.message).toContain('already');
+    expect(result.view.folders.map((f) => f.path)).toEqual([base, x]);
     expect(storage.listFolders(id).map((f) => f.path)).toEqual([base, x]);
   });
 
-  it('a confirmed replace is listed in replaced and in the notice; a cancelled one adds nothing', async () => {
+  it('a confirmed replace is listed in replaced and in replacements; a cancelled one adds nothing', async () => {
     for (const answer of [true, false]) {
       fs.rmSync(work, { recursive: true, force: true });
       fs.mkdirSync(work, { recursive: true });
@@ -1473,10 +1502,10 @@ describe('addFolders', () => {
       expect(confirms).toHaveLength(1);
       if (answer) {
         expect(result.replaced).toEqual([inner]);
-        expect(result.notice).toBe(`${outer} replaced ${inner}.`);
+        expect(result.replacements).toEqual([{ path: outer, replaced: [inner] }]);
         expect(storage.listFolders(id).map((f) => f.path)).toContain(outer);
       } else {
-        expect(result).toMatchObject({ view: null, replaced: [], notice: null });
+        expect(result).toMatchObject({ view: null, replaced: [], error: null });
         expect(storage.listFolders(id).map((f) => f.path)).toEqual([path.join(work, 'base'), inner]);
       }
     }

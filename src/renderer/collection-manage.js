@@ -56,6 +56,11 @@
     noticeBox.hidden = !message;
   }
 
+  // Shows a notice only while the panel still manages the collection the action was for.
+  function showNoticeFor(collectionId, message) {
+    if (managedId === collectionId) showNotice(message);
+  }
+
   // FR-12: true while a rescan or add-folder scan of the managed collection runs. The main
   // process refuses the same actions with COLLECTION_BUSY; disabling is the renderer half.
   const isBusy = () => managedId !== null && window.CollectionBusy.isBusy(managedId);
@@ -163,21 +168,13 @@
       const picked = await api.pickFolders();
       if (picked.canceled || picked.paths.length === 0) return;
       began = window.CollectionBusy.begin(collectionId, 'add-folder');
-      let result;
-      try {
-        result = await api.addFolders(collectionId, picked.paths);
-      } finally {
-        if (began) window.CollectionBusy.end(collectionId);
-        began = false;
-      }
+      const result = await api.addFolders(collectionId, picked.paths);
       if (result.view) {
         showView(collectionId, result.view);
         document.dispatchEvent(new CustomEvent('collections-changed', { detail: { collectionId } }));
       }
-      if (managedId === collectionId) {
-        showNotice(result.notice || '');
-        if (!result.ok) showError(result.error);
-      }
+      showNoticeFor(collectionId, result.notice || '');
+      if (!result.ok) showErrorFor(collectionId, result.error);
     } catch (err) {
       showErrorFor(collectionId, messageOf(err));
     } finally {

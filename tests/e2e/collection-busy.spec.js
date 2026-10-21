@@ -150,7 +150,7 @@ test('rescan held in the service: the four management channels are refused with 
     const refusals = [
       await call(window, 'renameCollection', alphaId, 'Renamed'),
       await call(window, 'deleteCollection', alphaId),
-      await call(window, 'addFolder', alphaId, extra),
+      await call(window, 'addFolders', alphaId, [extra]),
       await call(window, 'removeFolder', alphaId, folderId),
     ];
     for (const result of refusals) {

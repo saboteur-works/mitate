@@ -35,12 +35,9 @@
     syncButton();
   });
 
-  // The text follows the holder: once the selected collection is no longer held by a rescan,
-  // a leftover "Rescanning..." goes (the rescan's own result text is set after it ends).
-  document.addEventListener('collection-busy-changed', () => {
-    if (status.textContent === 'Rescanning...' && busy.holder(selectedId) !== 'rescan') status.textContent = '';
-    syncButton();
-  });
+  // Selection sets the text from the holder; the rescan's own result text is set before
+  // its busy state ends, so only the button needs to follow busy changes.
+  document.addEventListener('collection-busy-changed', syncButton);
 
   button.addEventListener('click', async () => {
     const id = selectedId;

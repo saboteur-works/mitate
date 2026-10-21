@@ -13,19 +13,16 @@
  *   collections:rename  (collectionId, name) -> { ok: true, summary: { id, name, folderCount } }
  *   collections:delete  (collectionId) -> { ok: true, deleted: true } | { ok: true, canceled: true }
  *                          the service asks for confirmation (native dialog); no files on disk are touched.
- *   collections:addFolder (collectionId, dirPath) -> { ok: true, view, replaced } | { ok: true, canceled: true }
- *                          | { ok: false, error, code: 'FOLDER_COVERED' }
- *                          dirPath comes from folders:pick. replaced = paths of the folders a
- *                          confirmed add removed because the new folder contains them, [] when none;
- *                          the service asks for confirmation only then. A folder inside or identical
- *                          to one already in the collection is refused with code 'FOLDER_COVERED'.
  *   collections:addFolders (collectionId, paths) -> { ok: true, view, replaced, dropped, notice }
  *                          | { ok: false, error, code?, view, replaced, dropped, notice }
- *                          the multi-pick add used by the panel: one guard acquisition, picks inside or
- *                          identical to another pick are dropped first (dropped = [{ path, coveredBy }]),
- *                          the rest are added as by addFolder, in order. The first refusal stops the rest
- *                          and comes back with the view so far (view is null when nothing was added).
- *                          replaced = removed folder paths; notice = replaced and dropped texts or null.
+ *                          the multi-pick add used by the panel (paths come from folders:pick): one guard
+ *                          acquisition, picks inside or identical to another pick are dropped first
+ *                          (dropped = [{ path, coveredBy }]), the rest are added in order. A folder inside or
+ *                          identical to one already in the collection is refused with code 'FOLDER_COVERED'.
+ *                          The first refusal or failure of a pick stops the rest and comes back as
+ *                          { ok: false, error, code? } with the view so far (view is null when nothing was added).
+ *                          replaced = paths of the folders removed because a new folder contains them, [] when
+ *                          none; notice = the replaced and dropped texts (describeReplaced, describeDropped) or null.
  *                          A cancelled replace confirmation skips that pick.
  *   collections:removeFolder (collectionId, folderId) -> { ok: true, view }
  *                          rename, delete, add and remove fail with code 'COLLECTION_BUSY' while the
@@ -57,7 +54,7 @@
  */
 
 const { messageOf } = require('./message-of.js');
-const { describeDropped } = require('./collections/overlap.js');
+const { describeDropped, describeReplaced } = require('./collections/overlap.js');
 
 const CHANNELS = {
   pickFolders: 'folders:pick',
@@ -67,7 +64,6 @@ const CHANNELS = {
   rescanCollection: 'collections:rescan',
   renameCollection: 'collections:rename',
   deleteCollection: 'collections:delete',
-  addFolder: 'collections:addFolder',
   addFolders: 'collections:addFolders',
   removeFolder: 'collections:removeFolder',
   revealFile: 'files:reveal',
@@ -84,7 +80,6 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, revealFil
     } catch (err) {
       const failure = { ok: false, error: messageOf(err) };
       if (err && err.code) failure.code = err.code;
-      if (err && err.partial) Object.assign(failure, err.partial);
       return failure;
     }
   }
@@ -139,20 +134,15 @@ function registerIpc({ ipcMain, dialog, service, rescanService = null, revealFil
       return result && result.canceled ? { canceled: true } : { deleted: true };
     }));
 
-  handle(CHANNELS.addFolder, (_event, collectionId, dirPath) =>
-    guard(async () => {
-      requireStrings(collectionId, dirPath);
-      const result = await service.addFolder(collectionId, dirPath);
-      if (result && result.canceled) return { canceled: true };
-      const { replaced = [], ...view } = result;
-      return { view, replaced };
-    }));
-
   handle(CHANNELS.addFolders, (_event, collectionId, paths) =>
     guard(async () => {
-      requireStrings(collectionId);
-      if (!Array.isArray(paths) || !paths.every((p) => typeof p === 'string')) throw new Error('Invalid arguments');
-      return service.addFolders(collectionId, paths);
+      if (!Array.isArray(paths)) throw new Error('Invalid arguments');
+      requireStrings(collectionId, ...paths);
+      const { view, replaced, replacements, dropped, error } = await service.addFolders(collectionId, paths);
+      const notice = [describeReplaced(replacements), describeDropped(dropped)].filter(Boolean).join(' ') || null;
+      if (!error) return { view, replaced, dropped, notice };
+      // guard() spreads the result after ok: true, so ok: false here wins.
+      return { ok: false, error: error.message, ...(error.code ? { code: error.code } : {}), view, replaced, dropped, notice };
     }));
 
   handle(CHANNELS.removeFolder, (_event, collectionId, folderId) =>
