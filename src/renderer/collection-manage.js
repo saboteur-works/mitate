@@ -149,6 +149,7 @@
     if (managedId !== collectionId) return;
     renderFolders(view.folders);
     window.TreeView.update(view.folders, view.files);
+    window.TypeViews.update(view);
   }
 
   // Picks folders, then adds them with one collections:addFolders call. The main process

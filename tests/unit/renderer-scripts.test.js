@@ -15,6 +15,10 @@ describe('shared scripts loaded by index.html', () => {
   it('lists the shared scripts', () => {
     expect(shared).toContain('../shared/path-compare.js');
     expect(shared).toContain('../shared/tree-model.js');
+    expect(shared).toContain('../shared/type-list.js');
+    expect(shared).toContain('../shared/type-list-cache.js');
+    expect(shared).toContain('../shared/list-window.js');
+    expect(shared).toContain('../shared/tabs-model.js');
   });
 
   it('load together in one global scope and define their globals', () => {
@@ -26,5 +30,9 @@ describe('shared scripts loaded by index.html', () => {
     expect(vm.runInContext('typeof PathCompare', ctx)).toBe('object');
     expect(vm.runInContext('typeof TreeModel', ctx)).toBe('object');
     expect(vm.runInContext('typeof FileDetail', ctx)).toBe('object');
+    expect(vm.runInContext('typeof TypeList', ctx)).toBe('object');
+    expect(vm.runInContext('typeof TypeListCache', ctx)).toBe('object');
+    expect(vm.runInContext('typeof ListWindow', ctx)).toBe('object');
+    expect(vm.runInContext('typeof TabsModel', ctx)).toBe('object');
   });
 });

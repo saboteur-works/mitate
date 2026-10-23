@@ -63,6 +63,105 @@
   font-weight: 400;
 }
 
+/* Virtualized list view. ROW_HEIGHT in list-view.js must equal .list-row height. */
+.list-view {
+  position: relative;
+  height: 400px;
+  overflow-y: auto;
+  border: 1px solid #888;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.list-spacer {
+  position: relative;
+  width: 100%;
+}
+
+.list-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 24px;
+  line-height: 24px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.list-folder {
+  margin-left: 12px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.list-selected {
+  background: #bfdbfe;
+  outline: 1px solid #2563eb;
+  outline-offset: -1px;
+}
+
+.list-view:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+
+.list-view:focus .list-focused {
+  box-shadow: inset 0 0 0 2px #1d4ed8;
+  background: #eff6ff;
+}
+
+.list-view:focus .list-focused.list-selected {
+  background: #bfdbfe;
+}
+
+.list-status {
+  margin: 0;
+  padding: 8px;
+  color: #6b7280;
+}
+
+/* View tabs and the shared view area. An inactive panel keeps its layout box (and so its
+   scroll position) and is only made invisible; display: none would reset the tree's scroll. */
+.view-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 0;
+}
+
+.view-tabs button {
+  padding: 4px 12px;
+  border: 1px solid #888;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: #f3f4f6;
+}
+
+.view-tabs button[aria-selected="true"] {
+  background: #fff;
+  font-weight: 600;
+}
+
+.view-tabs button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.view-area {
+  position: relative;
+}
+
+.view-inactive {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .collection-selected {
   background: #dbeafe;
 }

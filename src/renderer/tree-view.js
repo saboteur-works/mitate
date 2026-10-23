@@ -44,7 +44,7 @@
  *
  * API: window.TreeView.show(folders, files) replaces the displayed collection
  * (folders/files as returned by the collections view); TreeView.update(folders, files)
- * replaces them keeping the expanded folders.
+ * replaces them keeping the expanded folders; TreeView.clearSelection() clears only the selection.
  */
 (function () {
   const ROW_HEIGHT = 24;
@@ -250,10 +250,22 @@
     replaceTree(folders, files, true);
   }
 
+  // Clears the selection if there is one (announcing file-selected null). Expansion, scroll and
+  // focus are untouched. Used when the view switches to a type list (type-views.js).
+  function clearSelection() {
+    if (selectedId === null) return;
+    selectedId = null;
+    firstRendered = -1;
+    lastRendered = -1;
+    renderedFocus = -2;
+    renderWindow();
+    announceSelection(null);
+  }
+
   container.addEventListener('scroll', renderWindow);
   container.setAttribute('role', 'tree');
   container.tabIndex = 0;
   container.addEventListener('keydown', onKeyDown);
 
-  window.TreeView = { show, update };
+  window.TreeView = { show, update, clearSelection };
 })();

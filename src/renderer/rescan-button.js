@@ -49,6 +49,7 @@
       if (selectedId !== id) return;
       if (!result.ok) return fail(result.error);
       window.TreeView.update(result.view.folders, result.view.files);
+      window.TypeViews.update(result.view);
       const { rescanned, skipped } = result.summary;
       status.textContent = `Rescanned ${rescanned.length} folders, skipped ${skipped.length}`;
     } catch (err) {

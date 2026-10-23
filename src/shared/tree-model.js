@@ -82,7 +82,13 @@ const pathCompare =
  * one Set of normalised file paths per owning root; each file is one lookup
  * per owner of its root.
  *
+ * The rule is implemented once, in ownedFiles, and buildTree uses it, as do the
+ * type lists (src/shared/type-list.js), so the tree and the lists show the same
+ * files.
+ *
  * Exports: buildTree(folderRecords, fileRecords) -> Node[] (root nodes),
+ * ownedFiles(folderRecords, fileRecords) -> Map<folderId, FileRecord[]> (the
+ * file records each root keeps, input order, folders with no files map to []),
  * flattenVisible(tree, expandedSet) -> { node, depth }[], compareNames(a, b).
  */
 
@@ -190,13 +196,14 @@ function ownersOf(entries, i) {
   return owners;
 }
 
-function buildTree(folderRecords, fileRecords) {
+// One entry per distinct folder record id (the first wins), in input order, with
+// the file records of that folder and the indexes of its owner roots.
+function ownershipEntries(folderRecords, fileRecords) {
   const entries = [];
   const byId = new Map();
   for (const f of folderRecords || []) {
     if (byId.has(f.id)) continue;
-    const root = makeFolder(f.id, baseName(f.path), f.path, '', f.unavailable === true);
-    const entry = { root, byRel: new Map(), effPath: effectivePath(f), files: [], owners: [], keys: null };
+    const entry = { folder: f, effPath: effectivePath(f), files: [], owners: [], keys: null };
     byId.set(f.id, entry);
     entries.push(entry);
   }
@@ -220,17 +227,38 @@ function buildTree(folderRecords, fileRecords) {
       }
     }
   }
+  return entries;
+}
+
+// The file records a root keeps once the one-appearance rule is applied.
+function keptFiles(entries, e) {
+  if (e.owners.length === 0) return e.files;
+  return e.files.filter((rec) => {
+    const k = normalizedFilePath(e.effPath, rec);
+    return k === null || !e.owners.some((j) => entries[j].keys.has(k));
+  });
+}
+
+// Map of folder id -> the file records that root owns (input order kept). A
+// file record whose folder has no record is in no list. This is the single
+// place the one-appearance rule lives; buildTree and the type lists use it.
+function ownedFiles(folderRecords, fileRecords) {
+  const entries = ownershipEntries(folderRecords, fileRecords);
+  const owned = new Map();
+  for (const e of entries) owned.set(e.folder.id, keptFiles(entries, e));
+  return owned;
+}
+
+function buildTree(folderRecords, fileRecords) {
+  const entries = ownershipEntries(folderRecords, fileRecords);
   const result = [];
   for (const e of entries) {
-    for (const rec of e.files) {
-      if (e.owners.length > 0) {
-        const k = normalizedFilePath(e.effPath, rec);
-        if (k !== null && e.owners.some((j) => entries[j].keys.has(k))) continue;
-      }
-      addFile(e.root, rec, e.byRel);
-    }
-    sortChildren(e.root);
-    result.push(e.root);
+    const f = e.folder;
+    const root = makeFolder(f.id, baseName(f.path), f.path, '', f.unavailable === true);
+    const byRel = new Map();
+    for (const rec of keptFiles(entries, e)) addFile(root, rec, byRel);
+    sortChildren(root);
+    result.push(root);
   }
   result.sort(compareNodes);
   return result;
@@ -258,7 +286,7 @@ function flattenVisible(tree, expandedSet) {
   return rows;
 }
 
-const TreeModel = { buildTree, flattenVisible, compareNames };
+const TreeModel = { buildTree, flattenVisible, compareNames, ownedFiles };
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = TreeModel;
