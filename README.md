@@ -76,6 +76,7 @@ The tests launch the app through `tests/support/background-main.js` (the path is
 | `tools/atime-measurement/` | Script that records whether a plain `cat` read changes a file's access time |
 | `tools/store-scale/` | Script that measures the JSON store at 50,000, 200,000 and 500,000 file records (see below) |
 | `tools/scan-speed/` | Scripts that measure scan wall time and peak RSS (see below) |
+| `tools/sample-library/` | Script that builds a large set of sample images for trying the app by hand (see below) |
 | `tools/format-probe/` | Format-support probes behind [docs/research/format-support.md](docs/research/format-support.md) |
 | `tests/unit/`, `tests/e2e/` | Vitest and Playwright tests |
 | `tests/support/` | Test helpers, including the fixture-tree builder (`fixture-tree.js`), the background Electron entry (`background-main.js`, `app-entry.js`), the e2e app launcher and helpers (`e2e-app.js`), the IPC handler wrapper used by e2e tests (`ipc-wrap.js`), the type-view helpers (`type-views-ui.js`, `type-list-hooks.js`, `large-fixture.js`, the 10,000-file generator), `counting-fs.js`, `scan-hold.js` (holds one scan worker's events in the main process for busy-state tests) and the `dialog.showMessageBox` stub in `background-main.js` (see [Collection management](#collection-management)) |
@@ -156,6 +157,14 @@ node tools/store-scale/measure.js [--sizes 50000,200000,500000] [--runs 5]
 ```
 
 Runs under plain Node and writes [docs/measurements/json-store-scale.md](docs/measurements/json-store-scale.md), which records the numbers and the method.
+
+## Sample library
+
+```sh
+node tools/sample-library/generate.js [--count 10000] [--dir <path>]
+```
+
+Writes `count` real 64x48 PNG images (default 10,000, about 39 MB) into `sample-library/` at the repository root, spread over year/month folders. Git ignores that folder. Add it as a collection folder to try the app with a large collection. A rerun rebuilds a folder the script made and refuses any other existing folder.
 
 ## Scan speed measurement
 
